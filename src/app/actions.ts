@@ -1,3 +1,4 @@
+
 'use server';
 
 import { refinePrompt, type RefinePromptInput, type RefinePromptOutput } from '@/ai/flows/prompt-refinement';
@@ -9,8 +10,9 @@ export async function refineUserPrompt(input: RefinePromptInput): Promise<Refine
     return result;
   } catch (error) {
     console.error("Error refining prompt:", error);
-    // Consider returning a more specific error structure if needed
-    throw new Error("Failed to refine prompt. Please try again.");
+    // Ensure the error message is propagated or a generic one is used
+    const message = error instanceof Error ? error.message : "Không thể tinh chỉnh lời nhắc. Vui lòng thử lại.";
+    throw new Error(message);
   }
 }
 
@@ -20,7 +22,9 @@ export async function generateImageFrames(input: GenerateFramesInput): Promise<G
     return result;
   } catch (error) {
     console.error("Error generating frames:", error);
-    // Consider returning a more specific error structure if needed
-    throw new Error("Failed to generate frames. Please ensure your prompt is descriptive and try again.");
+    const message = error instanceof Error ? error.message : "Không thể tạo khung hình. Hãy đảm bảo lời nhắc của bạn mang tính mô tả và thử lại.";
+    throw new Error(message);
   }
 }
+
+    

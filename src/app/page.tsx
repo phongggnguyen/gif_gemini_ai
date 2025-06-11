@@ -1,12 +1,15 @@
+
 'use client';
 
-import { useState, useRef, useEffect, type FormEvent } from 'react';
+import { useState, useRef, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
-import { Wand2, Sparkles, Download, Loader2, AlertTriangle } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, Image as ImageIcon } from 'lucide-react';
 import { refineUserPrompt, generateImageFrames } from './actions';
 import { createGifFromPngs } from '@/lib/gif-utils';
 import { useToast } from "@/hooks/use-toast";
@@ -19,10 +22,14 @@ export default function MagicalGifMakerPage() {
   const [generatedGifUrl, setGeneratedGifUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'frames' | 'output'>('frames');
   const [refinedPromptText, setRefinedPromptText] = useState<string | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [uploadedImageDataUri, setUploadedImageDataUri] = useState<string | null>(null);
+
 
   const { toast } = useToast();
   const resultContainerRef = useRef<HTMLDivElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (generatedGifUrl && activeTab === 'output' && resultContainerRef.current) {
@@ -34,9 +41,32 @@ export default function MagicalGifMakerPage() {
     promptInputRef.current?.select();
   };
 
+  const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadedImage(URL.createObjectURL(file));
+        setUploadedImageDataUri(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setUploadedImage(null);
+      setUploadedImageDataUri(null);
+    }
+  };
+
   const handleSubmit = async (event?: FormEvent) => {
     if (event) event.preventDefault();
-    if (!promptValue.trim() || isGenerating) return;
+    if (!promptValue.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Thiếu Mô Tả",
+        description: "Vui lòng nhập mô tả cho ảnh GIF của bạn.",
+      });
+      return;
+    }
+    if (isGenerating) return;
 
     setIsGenerating(true);
     setGeneratedFrames([]);
@@ -47,12 +77,18 @@ export default function MagicalGifMakerPage() {
     toast({ title: "Hãy để phép thuật bắt đầu!", description: "Đang tinh chỉnh lời nhắc của bạn..." });
 
     try {
-      const refinedResult = await refineUserPrompt({ originalPrompt: promptValue });
+      const refinedResult = await refineUserPrompt({ 
+        originalPrompt: promptValue,
+        uploadedImageDataUri: uploadedImageDataUri
+      });
       setRefinedPromptText(refinedResult.refinedPrompt);
       setStatusMessage('🎨 Đang tạo các khung hình doodle...');
       toast({ title: "Lời Nhắc Đã Được Tinh Chỉnh!", description: "Đang tạo các khung hình ảnh..." });
 
-      const framesResult = await generateImageFrames({ refinedPrompt: refinedResult.refinedPrompt });
+      const framesResult = await generateImageFrames({ 
+        refinedPrompt: refinedResult.refinedPrompt,
+        uploadedImageDataUri: uploadedImageDataUri 
+      });
       
       if (!framesResult.frameUrls || framesResult.frameUrls.length === 0) {
         setStatusMessage('⚠️ Ôi không! AI không thể tạo ra khung hình nào. Hãy thử một ý tưởng khác nhé?');
@@ -116,22 +152,64 @@ export default function MagicalGifMakerPage() {
 
       <main className="w-full max-w-3xl space-y-8">
         <Card className="shadow-xl border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <Wand2 className="h-7 w-7 text-primary" />
+              Tạo Ảnh GIF Mới
+            </CardTitle>
+            <CardDescription>
+              Mô tả ý tưởng của bạn và tùy chọn tải lên một hình ảnh để AI lấy làm tham chiếu.
+            </CardDescription>
+          </CardHeader>
           <CardContent className="p-6 space-y-6">
-            <div className="relative">
-              <Wand2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary" />
+            <div className="space-y-2">
+              <Label htmlFor="prompt-input" className="text-base font-semibold">
+                Mô Tả Ảnh Động <span className="text-destructive">* (Bắt buộc)</span>
+              </Label>
               <Textarea
                 id="prompt-input"
                 ref={promptInputRef}
                 value={promptValue}
                 onChange={(e) => setPromptValue(e.target.value)}
                 onFocus={handlePromptFocus}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleSubmit(); }}
-                placeholder="Mô tả ảnh động của bạn... ví dụ: một chú mèo nhảy múa dưới mưa"
-                className="pl-10 pr-4 py-3 text-base border-2 border-input focus:border-primary focus:ring-primary transition-all duration-300 ease-in-out rounded-lg shadow-sm"
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && promptValue.trim()) handleSubmit(); }}
+                placeholder="Ví dụ: một chú mèo nhảy múa dưới mưa, một con gấu trúc ăn tre..."
+                className="pl-4 pr-4 py-3 text-base border-2 border-input focus:border-primary focus:ring-primary transition-all duration-300 ease-in-out rounded-lg shadow-sm"
                 rows={3}
                 disabled={isGenerating}
+                required
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="image-upload" className="text-base font-semibold flex items-center gap-2">
+                <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                Tải Ảnh Lên (Tùy chọn)
+              </Label>
+              <Input
+                id="image-upload"
+                type="file"
+                accept="image/png, image/jpeg, image/webp"
+                ref={fileInputRef}
+                onChange={handleImageUpload}
+                className="text-base file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                disabled={isGenerating}
+              />
+              {uploadedImage && (
+                <div className="mt-4 p-2 border border-primary/20 rounded-lg bg-muted/30">
+                  <p className="text-sm text-muted-foreground mb-2">Ảnh đã tải lên:</p>
+                  <Image src={uploadedImage} alt="Ảnh đã tải lên" width={150} height={150} className="rounded-md object-contain max-h-40 w-auto shadow-sm" />
+                  <Button variant="link" size="sm" className="text-destructive px-0 h-auto py-1 mt-1" onClick={() => {
+                    setUploadedImage(null);
+                    setUploadedImageDataUri(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}>
+                    Xóa ảnh
+                  </Button>
+                </div>
+              )}
+            </div>
+            
             <Button
               id="generate-button"
               onClick={() => handleSubmit()}
@@ -227,3 +305,5 @@ export default function MagicalGifMakerPage() {
     </div>
   );
 }
+
+    

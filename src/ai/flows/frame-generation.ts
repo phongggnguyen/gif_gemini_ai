@@ -1,7 +1,10 @@
+
 'use server';
 
 /**
- * @fileOverview Frame generation flow using Gemini to create doodle-style image frames from a refined prompt.
+ * @fileOverview Frame generation flow using Gemini to create doodle-style image frames.
+ * Uses a refined prompt and an optional uploaded image as a base for the first frame.
+ * Subsequent frames use the previous frame for consistency.
  *
  * - generateFrames - A function that handles the frame generation process.
  * - GenerateFramesInput - The input type for the generateFrames function.
@@ -15,6 +18,12 @@ const GenerateFramesInputSchema = z.object({
   refinedPrompt: z
     .string()
     .describe('A refined prompt suitable for generating doodle-style images.'),
+  uploadedImageDataUri: z
+    .string()
+    .optional()
+    .describe(
+      "Optional. A user-uploaded image as a data URI to be used as the base for the first frame. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+    ),
 });
 export type GenerateFramesInput = z.infer<typeof GenerateFramesInputSchema>;
 
@@ -36,19 +45,29 @@ const generateFramesFlow = ai.defineFlow(
   async input => {
     const frameUrls: string[] = [];
     let previousFrameUrl: string | null = null;
-    const numberOfFrames = 10; // Generate 10 frames
+    const numberOfFrames = 10; 
 
     for (let i = 0; i < numberOfFrames; i++) {
       let promptPayload: any;
-      if (previousFrameUrl) {
-        // For subsequent frames, provide the previous frame as context
+      let textPromptContent: string;
+
+      if (i === 0) { // First frame
+        if (input.uploadedImageDataUri) {
+          textPromptContent = `Generate the FIRST doodle-style image frame. The user's detailed prompt is: "${input.refinedPrompt}". CRITICALLY, the main subject of THIS FRAME MUST be based on the provided image. Adapt the subject from the image into a doodle style. The image MUST have a white background and be in PNG format. This is the very first frame of an animation sequence.`;
+          promptPayload = [
+            {media: {url: input.uploadedImageDataUri}},
+            {text: textPromptContent}
+          ];
+        } else {
+          textPromptContent = `Generate the FIRST doodle-style image frame based on the following detailed prompt: "${input.refinedPrompt}". The image MUST have a white background and be in PNG format. This is the very first frame of an animation sequence.`;
+          promptPayload = textPromptContent;
+        }
+      } else { // Subsequent frames
+        textPromptContent = `Generate the NEXT frame in an animation sequence. The overall animation is based on the detailed prompt: "${input.refinedPrompt}". ${input.uploadedImageDataUri ? "The very first frame was based on an image uploaded by the user, which set the appearance of the main subject." : ""} This frame MUST maintain consistency with the PREVIOUS frame provided (style, subject details, colors, and overall scene composition). The image MUST have a white background and be in PNG format.`;
         promptPayload = [
-          {media: {url: previousFrameUrl}},
-          {text: `Generate the next frame in an animation sequence based on the refined prompt: "${input.refinedPrompt}". Critically, ensure the main subject (character, object) is highly consistent with the provided image (previous frame). Maintain style, and overall scene consistency. The image should have a white background and be in PNG format.`}
+          {media: {url: previousFrameUrl!}}, // previousFrameUrl will be set after the first frame
+          {text: textPromptContent}
         ];
-      } else {
-        // For the first frame
-        promptPayload = `Generate the first doodle-style image frame based on the following prompt: "${input.refinedPrompt}". The image should have a white background and be in PNG format. This is the very first frame of an animation sequence.`;
       }
 
       const {media} = await ai.generate({
@@ -56,30 +75,35 @@ const generateFramesFlow = ai.defineFlow(
         prompt: promptPayload,
         config: {
           responseModalities: ['TEXT', 'IMAGE'],
+          // It's good practice to consider safety, but for doodle generation, default might be okay.
+          // If issues arise, specific categories can be adjusted.
+          // safetySettings: [ 
+          //   { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_LOW_AND_ABOVE' }
+          // ]
         },
       });
 
       if (media && media.url) {
         frameUrls.push(media.url);
-        previousFrameUrl = media.url; // Set the current frame as previous for the next iteration
+        previousFrameUrl = media.url; 
       } else {
-        // Handle case where media or media.url is undefined
-        console.warn(`Frame ${i+1} generation did not return a valid media URL. Prompt: ${JSON.stringify(promptPayload)}`);
-        // If the first frame fails, it's unlikely subsequent ones will work well with consistency.
+        const errorContext = `Frame ${i+1} generation failed. Prompt: ${JSON.stringify(promptPayload)}. Refined Prompt: "${input.refinedPrompt}". Image Uploaded: ${!!input.uploadedImageDataUri}`;
+        console.warn(errorContext);
+        
         if (i === 0) {
-          throw new Error(`Could not generate the first frame. AI might be having trouble with the prompt: "${input.refinedPrompt}"`);
+          throw new Error(`Không thể tạo khung hình đầu tiên. AI có thể gặp sự cố với lời nhắc hoặc hình ảnh được cung cấp. ${errorContext}`);
         }
-        // For subsequent frames, we could try to skip, or use the last successful frame again,
-        // but for simplicity, we'll throw an error if any frame fails after the first.
-        throw new Error(`Failed to generate frame ${i+1} after a successful start. This might indicate an issue with maintaining consistency or a temporary AI problem.`);
+        // For subsequent frames, if one fails, it breaks the sequence.
+        throw new Error(`Không thể tạo khung hình ${i+1} sau khi đã bắt đầu thành công. Điều này có thể do sự cố duy trì tính nhất quán hoặc sự cố AI tạm thời. ${errorContext}`);
       }
     }
     
     if (frameUrls.length < numberOfFrames) {
-        // This case should ideally be caught by the loop's error handling, but as a fallback:
-        throw new Error(`Could not generate all ${numberOfFrames} frames as requested. Only ${frameUrls.length} were created.`);
+        throw new Error(`Không thể tạo đủ ${numberOfFrames} khung hình theo yêu cầu. Chỉ có ${frameUrls.length} được tạo.`);
     }
 
     return {frameUrls};
   }
 );
+
+    
