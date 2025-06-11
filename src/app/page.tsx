@@ -53,6 +53,14 @@ export default function MagicalGifMakerPage() {
       toast({ title: "Prompt Refined!", description: "Now generating image frames..." });
 
       const framesResult = await generateImageFrames({ refinedPrompt: refinedResult.refinedPrompt });
+      
+      if (!framesResult.frameUrls || framesResult.frameUrls.length === 0) {
+        setStatusMessage('⚠️ Uh oh! The AI couldn\'t dream up any frames. Try a different idea?');
+        toast({ variant: "destructive", title: "Generation Error", description: "No frames were generated. Please adjust your prompt." });
+        setIsGenerating(false);
+        return;
+      }
+      
       setGeneratedFrames(framesResult.frameUrls);
 
       if (framesResult.frameUrls.length < 2) {

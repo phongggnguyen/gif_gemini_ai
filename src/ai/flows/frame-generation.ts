@@ -27,13 +27,6 @@ export async function generateFrames(input: GenerateFramesInput): Promise<Genera
   return generateFramesFlow(input);
 }
 
-const frameGenerationPrompt = ai.definePrompt({
-  name: 'frameGenerationPrompt',
-  input: {schema: GenerateFramesInputSchema},
-  output: {schema: z.string()},
-  prompt: `Generate a doodle-style image frame based on the following prompt:\n\n{{{refinedPrompt}}}\n\nThe image should have a white background and be in PNG format. Return the image as a data URI.`,
-});
-
 const generateFramesFlow = ai.defineFlow(
   {
     name: 'generateFramesFlow',
@@ -42,28 +35,43 @@ const generateFramesFlow = ai.defineFlow(
   },
   async input => {
     const frameUrls: string[] = [];
-    // Generate 10 frames.  Can increase this later.
-    for (let i = 0; i < 10; i++) {
+    let previousFrameUrl: string | null = null;
+    const numberOfFrames = 5; // Let's try with 5 frames for now, can be adjusted.
+
+    for (let i = 0; i < numberOfFrames; i++) {
+      let promptPayload: any = input.refinedPrompt;
+      if (previousFrameUrl) {
+        promptPayload = [
+          {media: {url: previousFrameUrl}},
+          {text: `Generate the next frame in an animation sequence based on the refined prompt: "${input.refinedPrompt}". Maintain character, style, and subject consistency with the provided image. The image should have a white background and be in PNG format.`}
+        ];
+      } else {
+        // Initial frame prompt
+        promptPayload = `Generate the first doodle-style image frame based on the following prompt: "${input.refinedPrompt}". The image should have a white background and be in PNG format.`;
+      }
+
       const {media} = await ai.generate({
-        // IMPORTANT: ONLY the googleai/gemini-2.0-flash-exp model is able to generate images. You MUST use exactly this model to generate images.
         model: 'googleai/gemini-2.0-flash-exp',
-
-        // simple prompt
-        prompt: input.refinedPrompt,
-        // OR, existing images can be provided in-context for editing, character reuse, etc.
-        // prompt: [
-        //   {media: {url: 'data:<mime_type>;base64,<b64_encoded_image>'}},
-        //   {text: 'generate an image of this character in a jungle'},
-        // ],
-
+        prompt: promptPayload,
         config: {
-          responseModalities: ['TEXT', 'IMAGE'], // MUST provide both TEXT and IMAGE, IMAGE only won't work
+          responseModalities: ['TEXT', 'IMAGE'],
         },
       });
 
-      //const {output} = await frameGenerationPrompt(input);
-      frameUrls.push(media.url);
+      if (media && media.url) {
+        frameUrls.push(media.url);
+        previousFrameUrl = media.url; // Set the current frame as previous for the next iteration
+      } else {
+        // Handle case where media or media.url is undefined, perhaps log an error or break
+        console.warn(`Frame ${i+1} generation did not return a valid media URL.`);
+        // Optionally, you could try to regenerate or skip this frame
+      }
     }
+    
+    if (frameUrls.length === 0 && numberOfFrames > 0) {
+        throw new Error('No frames could be generated. The AI might be having trouble with the prompt.');
+    }
+
 
     return {frameUrls};
   }
