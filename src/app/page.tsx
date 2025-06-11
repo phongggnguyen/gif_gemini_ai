@@ -12,7 +12,7 @@ import { createGifFromPngs } from '@/lib/gif-utils';
 import { useToast } from "@/hooks/use-toast";
 
 export default function MagicalGifMakerPage() {
-  const [promptValue, setPromptValue] = useState<string>('a shiba inu eating ice-cream');
+  const [promptValue, setPromptValue] = useState<string>('một chú chó shiba đang ăn kem');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [generatedFrames, setGeneratedFrames] = useState<string[]>([]);
@@ -43,20 +43,20 @@ export default function MagicalGifMakerPage() {
     setGeneratedGifUrl(null);
     setRefinedPromptText(null);
     setActiveTab('frames');
-    setStatusMessage('✨ Refining your magical idea...');
-    toast({ title: "Let the magic begin!", description: "Refining your prompt..." });
+    setStatusMessage('✨ Đang tinh chỉnh ý tưởng kỳ diệu của bạn...');
+    toast({ title: "Hãy để phép thuật bắt đầu!", description: "Đang tinh chỉnh lời nhắc của bạn..." });
 
     try {
       const refinedResult = await refineUserPrompt({ originalPrompt: promptValue });
       setRefinedPromptText(refinedResult.refinedPrompt);
-      setStatusMessage('🎨 Conjuring doodle frames...');
-      toast({ title: "Prompt Refined!", description: "Now generating image frames..." });
+      setStatusMessage('🎨 Đang tạo các khung hình doodle...');
+      toast({ title: "Lời Nhắc Đã Được Tinh Chỉnh!", description: "Đang tạo các khung hình ảnh..." });
 
       const framesResult = await generateImageFrames({ refinedPrompt: refinedResult.refinedPrompt });
       
       if (!framesResult.frameUrls || framesResult.frameUrls.length === 0) {
-        setStatusMessage('⚠️ Uh oh! The AI couldn\'t dream up any frames. Try a different idea?');
-        toast({ variant: "destructive", title: "Generation Error", description: "No frames were generated. Please adjust your prompt." });
+        setStatusMessage('⚠️ Ôi không! AI không thể tạo ra khung hình nào. Hãy thử một ý tưởng khác nhé?');
+        toast({ variant: "destructive", title: "Lỗi Tạo Ảnh", description: "Không có khung hình nào được tạo. Vui lòng điều chỉnh lời nhắc của bạn." });
         setIsGenerating(false);
         return;
       }
@@ -64,26 +64,26 @@ export default function MagicalGifMakerPage() {
       setGeneratedFrames(framesResult.frameUrls);
 
       if (framesResult.frameUrls.length < 2) {
-        setStatusMessage('⚠️ Oops! Not enough frames to make magic. Try a different idea?');
-        toast({ variant: "destructive", title: "Generation Error", description: "Could not generate enough frames for a GIF." });
+        setStatusMessage('⚠️ Rất tiếc! Không đủ khung hình để tạo điều kỳ diệu. Hãy thử một ý tưởng khác nhé?');
+        toast({ variant: "destructive", title: "Lỗi Tạo Ảnh", description: "Không thể tạo đủ khung hình cho GIF." });
         setIsGenerating(false);
         return;
       }
       
-      setStatusMessage('🎞️ Weaving frames into a GIFtastic animation...');
-      toast({ title: "Frames Generated!", description: `Generated ${framesResult.frameUrls.length} frames. Now creating GIF...` });
+      setStatusMessage('🎞️ Đang dệt các khung hình thành một hoạt ảnh GIF tuyệt vời...');
+      toast({ title: "Các Khung Hình Đã Được Tạo!", description: `Đã tạo ${framesResult.frameUrls.length} khung hình. Đang tạo GIF...` });
 
       const gifUrl = await createGifFromPngs(framesResult.frameUrls, 4); // 4 FPS
       setGeneratedGifUrl(gifUrl);
-      setStatusMessage('🎉 Voila! Your magical GIF is ready!');
-      toast({ title: "GIF Ready!", description: "Your magical animation is complete." });
+      setStatusMessage('🎉 Xong! GIF kỳ diệu của bạn đã sẵn sàng!');
+      toast({ title: "GIF Đã Sẵn Sàng!", description: "Hoạt ảnh kỳ diệu của bạn đã hoàn tất." });
       setActiveTab('output');
 
     } catch (error: any) {
       console.error('Generation failed:', error);
-      const errorMessage = error.message || 'An unknown magical mishap occurred. Please try again.';
-      setStatusMessage(`❌ Oh no! ${errorMessage}`);
-      toast({ variant: "destructive", title: "Magic Failed", description: errorMessage });
+      const errorMessage = error.message || 'Một sự cố kỳ diệu không xác định đã xảy ra. Vui lòng thử lại.';
+      setStatusMessage(`❌ Ôi không! ${errorMessage}`);
+      toast({ variant: "destructive", title: "Phép Thuật Thất Bại", description: errorMessage });
     } finally {
       setIsGenerating(false);
     }
@@ -93,11 +93,11 @@ export default function MagicalGifMakerPage() {
     if (!generatedGifUrl) return;
     const link = document.createElement('a');
     link.href = generatedGifUrl;
-    link.download = 'magical-animation.gif';
+    link.download = 'hoat-anh-ky-dieu.gif';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast({ title: "Download Started", description: "Your GIF is being downloaded."});
+    toast({ title: "Bắt Đầu Tải Xuống", description: "GIF của bạn đang được tải xuống."});
   };
 
   return (
@@ -105,12 +105,12 @@ export default function MagicalGifMakerPage() {
       <header className="text-center mb-8 md:mb-12">
         <h1 className="text-4xl md:text-6xl font-extrabold font-headline tracking-tight">
           <span className="bg-gradient-to-r from-primary via-accent to-yellow-400 text-transparent bg-clip-text animate-pulse-once">
-            Magical
+            Trình Tạo
           </span>{' '}
-          GIF Maker
+          GIF Kỳ Diệu
         </h1>
         <p className="text-lg md:text-xl text-muted-foreground mt-2">
-          Turn your ideas into fun animated doodles!
+          Biến ý tưởng của bạn thành ảnh động doodle vui nhộn!
         </p>
       </header>
 
@@ -126,7 +126,7 @@ export default function MagicalGifMakerPage() {
                 onChange={(e) => setPromptValue(e.target.value)}
                 onFocus={handlePromptFocus}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleSubmit(); }}
-                placeholder="Describe your animation... e.g., a cat dancing in the rain"
+                placeholder="Mô tả ảnh động của bạn... ví dụ: một chú mèo nhảy múa dưới mưa"
                 className="pl-10 pr-4 py-3 text-base border-2 border-input focus:border-primary focus:ring-primary transition-all duration-300 ease-in-out rounded-lg shadow-sm"
                 rows={3}
                 disabled={isGenerating}
@@ -141,12 +141,12 @@ export default function MagicalGifMakerPage() {
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Generating Magic...
+                  Đang Tạo Điều Kỳ Diệu...
                 </>
               ) : (
                 <>
                   <Sparkles className="mr-2 h-5 w-5" />
-                  Generate Magic
+                  Tạo Điều Kỳ Diệu
                 </>
               )}
             </Button>
@@ -158,14 +158,14 @@ export default function MagicalGifMakerPage() {
             <CardContent className="p-6">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'frames' | 'output')} className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-4 bg-muted/50 rounded-lg p-1">
-                  <TabsTrigger value="frames" className="py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-md transition-all">Frames</TabsTrigger>
-                  <TabsTrigger value="output" className="py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-md transition-all">Output GIF</TabsTrigger>
+                  <TabsTrigger value="frames" className="py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-md transition-all">Khung Hình</TabsTrigger>
+                  <TabsTrigger value="output" className="py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-md transition-all">GIF Đầu Ra</TabsTrigger>
                 </TabsList>
                 
                 {refinedPromptText && (
                   <div className="mb-4 p-3 bg-secondary/30 rounded-md border border-primary/20">
                     <p className="text-sm text-muted-foreground font-medium">
-                      <span className="font-bold text-primary">Magically Refined Prompt:</span> {refinedPromptText}
+                      <span className="font-bold text-primary">Lời Nhắc Tinh Chỉnh Kỳ Diệu:</span> {refinedPromptText}
                     </p>
                   </div>
                 )}
@@ -174,7 +174,7 @@ export default function MagicalGifMakerPage() {
                   <div id="frames-container" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 p-1 bg-muted/30 rounded-lg border border-primary/10">
                     {generatedFrames.map((frame, index) => (
                       <div key={index} className="aspect-square border border-primary/20 rounded-md overflow-hidden shadow-sm relative animate-fadeIn" style={{ animationDelay: `${index * 50}ms`}}>
-                        <Image src={frame} alt={`Frame ${index + 1}`} layout="fill" objectFit="contain" className="bg-white" data-ai-hint="doodle animation" />
+                        <Image src={frame} alt={`Khung ${index + 1}`} layout="fill" objectFit="contain" className="bg-white" data-ai-hint="doodle animation" />
                         <span className="absolute top-1 right-1 bg-primary/80 text-primary-foreground text-xs px-1.5 py-0.5 rounded-full shadow-md">{index + 1}</span>
                       </div>
                     ))}
@@ -185,13 +185,13 @@ export default function MagicalGifMakerPage() {
                   <div id="result-container" ref={resultContainerRef} className="flex flex-col items-center space-y-4 p-1 bg-muted/30 rounded-lg border border-primary/10">
                     {generatedGifUrl ? (
                       <div className="relative group shadow-lg rounded-lg overflow-hidden border-2 border-primary/30">
-                        <Image src={generatedGifUrl} alt="Generated GIF" width={400} height={400} objectFit="contain" className="bg-white" unoptimized />
+                        <Image src={generatedGifUrl} alt="GIF Đã Tạo" width={400} height={400} objectFit="contain" className="bg-white" unoptimized />
                         <Button
                           onClick={handleDownloadGif}
                           variant="outline"
                           size="icon"
                           className="absolute bottom-3 right-3 h-10 w-10 bg-background/80 hover:bg-primary/80 hover:text-primary-foreground border-primary/50 text-primary shadow-md backdrop-blur-sm rounded-full transition-all duration-300 opacity-70 group-hover:opacity-100 scale-90 group-hover:scale-100"
-                          aria-label="Download GIF"
+                          aria-label="Tải GIF"
                         >
                           <Download className="h-5 w-5" />
                         </Button>
@@ -199,12 +199,12 @@ export default function MagicalGifMakerPage() {
                     ) : isGenerating && activeTab === 'output' ? (
                        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                          <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
-                         <p>Summoning your GIF...</p>
+                         <p>Đang triệu hồi GIF của bạn...</p>
                        </div>
                     ) : (
                       <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                         <AlertTriangle className="h-8 w-8 text-destructive mb-2" />
-                        <p>Your GIF will appear here once generated.</p>
+                        <p>GIF của bạn sẽ xuất hiện ở đây sau khi được tạo.</p>
                       </div>
                     )}
                   </div>
@@ -222,7 +222,7 @@ export default function MagicalGifMakerPage() {
       </main>
 
       <footer className="mt-auto pt-12 text-center text-sm text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} DoodleGIF. Powered by AI Magic.</p>
+        <p>&copy; {new Date().getFullYear()} DoodleGIF. Được hỗ trợ bởi Phép Thuật AI.</p>
       </footer>
     </div>
   );

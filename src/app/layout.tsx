@@ -3,8 +3,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'DoodleGIF - Magical GIF Maker',
-  description: 'Turn your ideas into fun animated doodles with AI!',
+  title: 'DoodleGIF - Trình Tạo GIF Kỳ Diệu',
+  description: 'Biến ý tưởng của bạn thành ảnh động doodle vui nhộn với AI!',
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="vi">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

@@ -36,18 +36,19 @@ const generateFramesFlow = ai.defineFlow(
   async input => {
     const frameUrls: string[] = [];
     let previousFrameUrl: string | null = null;
-    const numberOfFrames = 5; // Let's try with 5 frames for now, can be adjusted.
+    const numberOfFrames = 10; // Generate 10 frames
 
     for (let i = 0; i < numberOfFrames; i++) {
-      let promptPayload: any = input.refinedPrompt;
+      let promptPayload: any;
       if (previousFrameUrl) {
+        // For subsequent frames, provide the previous frame as context
         promptPayload = [
           {media: {url: previousFrameUrl}},
-          {text: `Generate the next frame in an animation sequence based on the refined prompt: "${input.refinedPrompt}". Maintain character, style, and subject consistency with the provided image. The image should have a white background and be in PNG format.`}
+          {text: `Generate the next frame in an animation sequence based on the refined prompt: "${input.refinedPrompt}". Critically, ensure the main subject (character, object) is highly consistent with the provided image (previous frame). Maintain style, and overall scene consistency. The image should have a white background and be in PNG format.`}
         ];
       } else {
-        // Initial frame prompt
-        promptPayload = `Generate the first doodle-style image frame based on the following prompt: "${input.refinedPrompt}". The image should have a white background and be in PNG format.`;
+        // For the first frame
+        promptPayload = `Generate the first doodle-style image frame based on the following prompt: "${input.refinedPrompt}". The image should have a white background and be in PNG format. This is the very first frame of an animation sequence.`;
       }
 
       const {media} = await ai.generate({
@@ -62,16 +63,22 @@ const generateFramesFlow = ai.defineFlow(
         frameUrls.push(media.url);
         previousFrameUrl = media.url; // Set the current frame as previous for the next iteration
       } else {
-        // Handle case where media or media.url is undefined, perhaps log an error or break
-        console.warn(`Frame ${i+1} generation did not return a valid media URL.`);
-        // Optionally, you could try to regenerate or skip this frame
+        // Handle case where media or media.url is undefined
+        console.warn(`Frame ${i+1} generation did not return a valid media URL. Prompt: ${JSON.stringify(promptPayload)}`);
+        // If the first frame fails, it's unlikely subsequent ones will work well with consistency.
+        if (i === 0) {
+          throw new Error(`Could not generate the first frame. AI might be having trouble with the prompt: "${input.refinedPrompt}"`);
+        }
+        // For subsequent frames, we could try to skip, or use the last successful frame again,
+        // but for simplicity, we'll throw an error if any frame fails after the first.
+        throw new Error(`Failed to generate frame ${i+1} after a successful start. This might indicate an issue with maintaining consistency or a temporary AI problem.`);
       }
     }
     
-    if (frameUrls.length === 0 && numberOfFrames > 0) {
-        throw new Error('No frames could be generated. The AI might be having trouble with the prompt.');
+    if (frameUrls.length < numberOfFrames) {
+        // This case should ideally be caught by the loop's error handling, but as a fallback:
+        throw new Error(`Could not generate all ${numberOfFrames} frames as requested. Only ${frameUrls.length} were created.`);
     }
-
 
     return {frameUrls};
   }
