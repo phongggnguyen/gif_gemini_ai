@@ -23,7 +23,7 @@ export default function MagicalGifMakerPage() {
   const [activeTab, setActiveTab] = useState<'frames' | 'output'>('frames');
   const [refinedPromptText, setRefinedPromptText] = useState<string | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [uploadedImageDataUri, setUploadedImageDataUri] = useState<string | null>(null);
+  const [uploadedImageDataUri, setUploadedImageDataUri] = useState<string | undefined>(undefined);
 
 
   const { toast } = useToast();
@@ -52,7 +52,7 @@ export default function MagicalGifMakerPage() {
       reader.readAsDataURL(file);
     } else {
       setUploadedImage(null);
-      setUploadedImageDataUri(null);
+      setUploadedImageDataUri(undefined);
     }
   };
 
@@ -208,7 +208,7 @@ export default function MagicalGifMakerPage() {
                   <Image src={uploadedImage} alt="Ảnh đã tải lên" width={150} height={150} className="rounded-md object-contain max-h-40 w-auto shadow-sm" />
                   <Button variant="link" size="sm" className="text-destructive px-0 h-auto py-1 mt-1" onClick={() => {
                     setUploadedImage(null);
-                    setUploadedImageDataUri(null);
+                    setUploadedImageDataUri(undefined);
                     if (fileInputRef.current) fileInputRef.current.value = '';
                   }}>
                     Xóa ảnh
@@ -312,5 +312,3 @@ export default function MagicalGifMakerPage() {
     </div>
   );
 }
-
-    
