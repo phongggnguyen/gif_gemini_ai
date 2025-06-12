@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, ImageIcon, Palette, Smile, BookOpen, CornerDownRight, FileImage } from 'lucide-react';
+import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, ImageIcon, Palette, Smile, BookOpen, CornerDownRight, FileImage, RotateCcw } from 'lucide-react';
 import { refineUserPrompt, generateImageFrames, type RefinePromptInput, type GenerateFramesInput } from './actions';
 import { createGifFromPngs } from '@/lib/gif-utils';
 import { useToast } from "@/hooks/use-toast";
@@ -35,14 +35,16 @@ const MOOD_OPTIONS = [
 ];
 
 interface StorySegment {
+  id: string;
   gifUrl: string;
   refinedPromptThisSegment: string;
   allFramesThisSegment: string[];
   originalUserPromptThisSegment: string;
+  uploadedImageForThisSegmentDisplayUrl?: string | null;
 }
 
 export default function MagicalGifMakerPage() {
-  const [promptValue, setPromptValue] = useState<string>('một chú chó shiba đang ăn kem');
+  const [promptValue, setPromptValue] = useState<string>('một chú chó shiba đang chạy trên đồng cỏ');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [currentGeneratedFrames, setCurrentGeneratedFrames] = useState<string[]>([]);
@@ -117,7 +119,7 @@ export default function MagicalGifMakerPage() {
   };
 
 
-  const resetCurrentGeneration = () => {
+  const resetCurrentGenerationState = () => {
     setCurrentGeneratedFrames([]);
     setCurrentGeneratedGifUrl(null);
     setCurrentRefinedPromptText(null);
@@ -146,26 +148,33 @@ export default function MagicalGifMakerPage() {
       setStorySegments([]); 
     }
     
-    resetCurrentGeneration();
+    resetCurrentGenerationState();
     setStatusMessage('✨ Đang tinh chỉnh ý tưởng kỳ diệu của bạn...');
     toast({ title: "Hãy để phép thuật bắt đầu!", description: "Đang tinh chỉnh lời nhắc của bạn..." });
 
     try {
-      let referenceImageForRefinement: string | undefined = undefined;
+      // Determine image for prompt refinement
+      let imageForRefinement: string | undefined = undefined;
+      let newImageProvidedForCurrentRefinementSegment = false;
       if (isInStoryMode) {
           if (nextSegmentUserUploadedImageDataUri) {
-              referenceImageForRefinement = nextSegmentUserUploadedImageDataUri;
+              imageForRefinement = nextSegmentUserUploadedImageDataUri;
+              newImageProvidedForCurrentRefinementSegment = true;
           } else if (storySegments.length > 0) {
               const prevSegment = storySegments[storySegments.length - 1];
-              referenceImageForRefinement = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
+              imageForRefinement = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
           }
       } else {
-          referenceImageForRefinement = initialUploadedImageDataUri;
+          imageForRefinement = initialUploadedImageDataUri;
+          if (initialUploadedImageDataUri) {
+            newImageProvidedForCurrentRefinementSegment = true; // For the first segment, if image is there, it's "new"
+          }
       }
 
       const refineInputArgs: RefinePromptInput = {
         originalPrompt: currentPromptForGeneration,
-        uploadedImageDataUri: referenceImageForRefinement,
+        uploadedImageDataUri: imageForRefinement,
+        newImageProvidedForCurrentSegment: newImageProvidedForCurrentRefinementSegment,
         isContinuation: isInStoryMode,
         ...(isInStoryMode && storySegments.length > 0 && { 
             previousSegmentRefinedPrompt: storySegments[storySegments.length - 1].refinedPromptThisSegment,
@@ -175,27 +184,38 @@ export default function MagicalGifMakerPage() {
       };
       
       const refinedResult = await refineUserPrompt(refineInputArgs);
-
       setCurrentRefinedPromptText(refinedResult.refinedPrompt);
       setStatusMessage('🎨 Đang tạo các khung hình doodle...');
       toast({ title: "Lời Nhắc Đã Được Tinh Chỉnh!", description: "Đang tạo các khung hình ảnh..." });
 
-      let referenceImageForFrameGeneration: string | undefined = undefined;
+      // Determine images for frame generation
+      let imageForFrameGeneration: string | undefined = undefined;
+      let lastFrameOfPrevSegmentForFrameGen: string | undefined = undefined;
+      let newImageProvidedForCurrentFrameSegment = false;
+
       if (isInStoryMode) {
+          if (storySegments.length > 0) {
+            lastFrameOfPrevSegmentForFrameGen = storySegments[storySegments.length - 1].allFramesThisSegment[storySegments[storySegments.length - 1].allFramesThisSegment.length - 1];
+          }
           if (nextSegmentUserUploadedImageDataUri) {
-              referenceImageForFrameGeneration = nextSegmentUserUploadedImageDataUri;
-          } else if (storySegments.length > 0) {
-              const prevSegment = storySegments[storySegments.length - 1];
-              referenceImageForFrameGeneration = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
+              imageForFrameGeneration = nextSegmentUserUploadedImageDataUri;
+              newImageProvidedForCurrentFrameSegment = true;
+          } else {
+              imageForFrameGeneration = lastFrameOfPrevSegmentForFrameGen; // If no new image, use last frame of prev as primary ref
           }
       } else {
-          referenceImageForFrameGeneration = initialUploadedImageDataUri;
+          imageForFrameGeneration = initialUploadedImageDataUri;
+          if (initialUploadedImageDataUri) {
+            newImageProvidedForCurrentFrameSegment = true;
+          }
       }
-
+      
       const framesInputArgs: GenerateFramesInput = {
         refinedPrompt: refinedResult.refinedPrompt,
-        initialFrameReferenceDataUri: referenceImageForFrameGeneration,
-        isFirstSegment: !isInStoryMode,
+        initialFrameReferenceDataUri: imageForFrameGeneration,
+        lastFrameOfPreviousSegmentDataUri: lastFrameOfPrevSegmentForFrameGen,
+        newImageProvidedForCurrentSegment: newImageProvidedForCurrentFrameSegment,
+        isFirstSegment: !isInStoryMode && storySegments.length === 0,
         ...(selectedStyle !== 'default' && { selectedStyle }),
         ...(selectedMood !== 'default' && { selectedMood }),
       };
@@ -211,7 +231,7 @@ export default function MagicalGifMakerPage() {
       
       setCurrentGeneratedFrames(framesResult.frameUrls);
 
-      if (framesResult.frameUrls.length < 2) {
+      if (framesResult.frameUrls.length < 2) { // Though we aim for 10, min 2 for a GIF
         setStatusMessage('⚠️ Rất tiếc! Không đủ khung hình để tạo điều kỳ diệu. Hãy thử một ý tưởng khác nhé?');
         toast({ variant: "destructive", title: "Lỗi Tạo Ảnh", description: "Không thể tạo đủ khung hình cho GIF." });
         if (isInStoryMode) setIsLoadingNextSegment(false); else setIsGenerating(false);
@@ -228,14 +248,16 @@ export default function MagicalGifMakerPage() {
       setActiveTab('output');
 
       const newSegment: StorySegment = {
+        id: Date.now().toString(),
         gifUrl,
         refinedPromptThisSegment: refinedResult.refinedPrompt,
         allFramesThisSegment: framesResult.frameUrls,
-        originalUserPromptThisSegment: currentPromptForGeneration
+        originalUserPromptThisSegment: currentPromptForGeneration,
+        uploadedImageForThisSegmentDisplayUrl: isInStoryMode ? nextSegmentUserUploadedImageDisplayUrl : initialUploadedImageDisplayUrl,
       };
       setStorySegments(prev => [...prev, newSegment]);
       
-      if (!isInStoryMode) {
+      if (!isInStoryMode && storySegments.length === 0) { // Only switch to story mode after the VERY first segment
         setIsInStoryMode(true); 
       }
       setNextStoryPromptInput(''); 
@@ -269,7 +291,7 @@ export default function MagicalGifMakerPage() {
   const handleResetStory = () => {
     setIsInStoryMode(false);
     setStorySegments([]);
-    setPromptValue('một chú chó shiba đang ăn kem'); 
+    setPromptValue('một chú chó shiba đang chạy trên đồng cỏ'); 
     setNextStoryPromptInput('');
     setInitialUploadedImageDataUri(undefined);
     setInitialUploadedImageDisplayUrl(null);
@@ -279,13 +301,15 @@ export default function MagicalGifMakerPage() {
     if (nextSegmentFileInputRef.current) nextSegmentFileInputRef.current.value = '';
     setSelectedStyle('default');
     setSelectedMood('default');
-    resetCurrentGeneration();
+    resetCurrentGenerationState();
     setStatusMessage('Sẵn sàng cho câu chuyện mới!');
     toast({ title: "Câu Chuyện Mới", description: "Đã đặt lại, sẵn sàng cho ý tưởng tiếp theo của bạn!" });
   };
 
 
   const isProcessing = isGenerating || isLoadingNextSegment;
+  const canStartGeneration = (!isInStoryMode && promptValue.trim() !== "") || (isInStoryMode && nextStoryPromptInput.trim() !== "");
+
 
   return (
     <div className="flex flex-col items-center min-h-screen p-4 md:p-8 font-body bg-gradient-to-br from-background to-secondary/30">
@@ -306,16 +330,16 @@ export default function MagicalGifMakerPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-2xl">
               <Wand2 className="h-7 w-7 text-primary" />
-              {isInStoryMode ? "Tiếp Tục Câu Chuyện Của Bạn" : "Tạo Ảnh GIF Mới"}
+              {isInStoryMode && storySegments.length > 0 ? "Tiếp Tục Câu Chuyện Của Bạn" : "Tạo Ảnh GIF Mới / Bắt Đầu Câu Chuyện"}
             </CardTitle>
             <CardDescription>
-              {isInStoryMode 
-                ? "Mô tả điều gì xảy ra tiếp theo. Bạn có thể tải ảnh mới để AI tham chiếu cho phần này."
+              {isInStoryMode && storySegments.length > 0 
+                ? "Mô tả điều gì xảy ra tiếp theo. Bạn có thể tải ảnh mới để AI tham chiếu cho chủ thể mới hoặc thay đổi trong phần này."
                 : "Mô tả ý tưởng, chọn phong cách, tâm trạng và tùy chọn tải lên hình ảnh tham chiếu ban đầu."}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 space-y-6">
-            {!isInStoryMode && (
+            {(!isInStoryMode || storySegments.length === 0) && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="prompt-input" className="text-base font-semibold">
@@ -407,7 +431,7 @@ export default function MagicalGifMakerPage() {
               </>
             )}
 
-            {isInStoryMode && (
+            {(isInStoryMode && storySegments.length > 0) && (
                 <div className="space-y-4 pt-4 border-t border-primary/20">
                     <div>
                         <Label htmlFor="next-prompt-input" className="text-base font-semibold flex items-center gap-2">
@@ -421,7 +445,7 @@ export default function MagicalGifMakerPage() {
                             onChange={(e) => setNextStoryPromptInput(e.target.value)}
                             onFocus={handleNextPromptFocus}
                             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && nextStoryPromptInput.trim()) handleStartOrContinueStory(); }}
-                            placeholder="Ví dụ: con mèo tìm thấy một chiếc mũ ma thuật..."
+                            placeholder="Ví dụ: con chó shiba gặp một con mèo..."
                             className="pl-4 pr-4 py-3 text-base border-2 border-input focus:border-primary focus:ring-primary rounded-lg shadow-sm"
                             rows={2}
                             disabled={isProcessing}
@@ -431,7 +455,7 @@ export default function MagicalGifMakerPage() {
                     <div className="space-y-2">
                         <Label htmlFor="next-segment-image-upload" className="text-base font-semibold flex items-center gap-2">
                             <FileImage className="h-5 w-5 text-muted-foreground" />
-                            Tải Ảnh Mới Cho Phần Này (Tùy chọn)
+                            Tải Ảnh Mới Cho Phần Này (Tùy chọn, ví dụ cho chủ thể mới)
                         </Label>
                         <Input
                             id="next-segment-image-upload"
@@ -462,7 +486,7 @@ export default function MagicalGifMakerPage() {
             <Button
               id="generate-button"
               onClick={() => handleStartOrContinueStory()}
-              disabled={isProcessing || (!isInStoryMode && !promptValue.trim()) || (isInStoryMode && !nextStoryPromptInput.trim())}
+              disabled={isProcessing || !canStartGeneration}
               className="w-full text-lg font-semibold py-6 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground transition-all duration-300 ease-in-out transform hover:scale-105 rounded-lg shadow-md focus:ring-2 focus:ring-offset-2 focus:ring-primary"
             >
               {isProcessing ? (
@@ -470,7 +494,7 @@ export default function MagicalGifMakerPage() {
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   Đang Tạo Điều Kỳ Diệu...
                 </>
-              ) : isInStoryMode ? (
+              ) : (isInStoryMode && storySegments.length > 0) ? (
                 <>
                   <BookOpen className="mr-2 h-5 w-5" />
                   Tiếp Tục Câu Chuyện
@@ -478,13 +502,13 @@ export default function MagicalGifMakerPage() {
               ) : (
                 <>
                   <Sparkles className="mr-2 h-5 w-5" />
-                  Bắt Đầu Câu Chuyện/Tạo GIF
+                  Bắt Đầu Câu Chuyện / Tạo GIF
                 </>
               )}
             </Button>
-            {isInStoryMode && (
-                <Button variant="outline" onClick={handleResetStory} className="w-full" disabled={isProcessing}>
-                    Bắt Đầu Câu Chuyện Mới
+            {(isInStoryMode && storySegments.length > 0) && (
+                <Button variant="outline" onClick={handleResetStory} className="w-full flex items-center gap-2" disabled={isProcessing}>
+                    <RotateCcw className="h-4 w-4"/> Bắt Đầu Câu Chuyện Mới
                 </Button>
             )}
           </CardContent>
@@ -493,7 +517,7 @@ export default function MagicalGifMakerPage() {
         {(currentGeneratedFrames.length > 0 || currentGeneratedGifUrl) && (
           <Card className="shadow-xl border-primary/20 bg-card/80 backdrop-blur-sm">
             <CardHeader>
-                <CardTitle>Kết quả hiện tại</CardTitle>
+                <CardTitle>Kết quả cho phần hiện tại</CardTitle>
             </CardHeader>
             <CardContent className="p-6">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'frames' | 'output')} className="w-full">
@@ -533,7 +557,7 @@ export default function MagicalGifMakerPage() {
                       <div className="relative group shadow-lg rounded-lg overflow-hidden border-2 border-primary/30">
                         <Image src={currentGeneratedGifUrl} alt="GIF Đã Tạo" width={400} height={400} objectFit="contain" className="bg-white" unoptimized data-ai-hint="generated gif animation"/>
                         <Button
-                          onClick={() => handleDownloadGif(currentGeneratedGifUrl)}
+                          onClick={() => handleDownloadGif(currentGeneratedGifUrl, storySegments.length -1 )}
                           variant="outline"
                           size="icon"
                           className="absolute bottom-3 right-3 h-10 w-10 bg-background/80 hover:bg-primary/80 hover:text-primary-foreground border-primary/50 text-primary shadow-md backdrop-blur-sm rounded-full transition-all duration-300 opacity-70 group-hover:opacity-100 scale-90 group-hover:scale-100"
@@ -567,20 +591,37 @@ export default function MagicalGifMakerPage() {
                         <BookOpen className="h-6 w-6 text-accent" />
                         Câu Chuyện Của Bạn Đến Hiện Tại
                     </CardTitle>
-                    <CardDescription>Các phần GIF đã tạo trong câu chuyện của bạn.</CardDescription>
+                    <CardDescription>Các phần GIF đã tạo trong câu chuyện của bạn. Phần mới nhất sẽ hiển thị ở khu vực "Kết quả cho phần hiện tại" ở trên sau khi tạo xong.</CardDescription>
                 </CardHeader>
-                <CardContent className="p-4 space-y-4">
-                    {storySegments.map((segment, index) => (
-                        <div key={index} className="p-4 border border-primary/20 rounded-lg bg-card/90 animate-fadeIn" style={{ animationDelay: `${index * 100}ms`}}>
-                            <p className="text-sm text-muted-foreground mb-1">
-                                <span className="font-semibold text-primary">Phần {index + 1}:</span> {segment.originalUserPromptThisSegment}
-                            </p>
-                            {segment.refinedPromptThisSegment && (
-                                 <p className="text-xs text-muted-foreground mb-2 italic pl-4">
-                                    AI đã diễn giải: "{segment.refinedPromptThisSegment.length > 100 ? segment.refinedPromptThisSegment.substring(0,100) + '...' : segment.refinedPromptThisSegment }"
-                                </p>
-                            )}
-                            <div className="relative group aspect-video max-w-xs mx-auto border rounded-md overflow-hidden shadow-md">
+                <CardContent className="p-4 space-y-6">
+                    {storySegments.filter(segment => segment.gifUrl !== currentGeneratedGifUrl).map((segment, index) => (
+                        <div key={segment.id} className="p-4 border border-primary/20 rounded-lg bg-card/90 animate-fadeIn" style={{ animationDelay: `${index * 100}ms`}}>
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                {segment.uploadedImageForThisSegmentDisplayUrl && (
+                                    <div className="flex-shrink-0">
+                                        <p className="text-xs text-muted-foreground mb-1">Ảnh tham chiếu đã dùng:</p>
+                                        <Image 
+                                            src={segment.uploadedImageForThisSegmentDisplayUrl} 
+                                            alt={`Ảnh tham chiếu cho phần ${index + 1}`} 
+                                            width={80} 
+                                            height={80} 
+                                            className="rounded-md object-contain border bg-white shadow-sm"
+                                            data-ai-hint="reference image story"
+                                        />
+                                    </div>
+                                )}
+                                <div className="flex-grow">
+                                    <p className="text-sm text-muted-foreground mb-1">
+                                        <span className="font-semibold text-primary">Phần {index + 1}:</span> {segment.originalUserPromptThisSegment}
+                                    </p>
+                                    {segment.refinedPromptThisSegment && (
+                                        <p className="text-xs text-muted-foreground mb-2 italic pl-2 border-l-2 border-primary/30">
+                                            AI đã diễn giải: "{segment.refinedPromptThisSegment.length > 150 ? segment.refinedPromptThisSegment.substring(0,150) + '...' : segment.refinedPromptThisSegment }"
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="relative group aspect-video max-w-xs mx-auto border rounded-md overflow-hidden shadow-md mt-3">
                                 <Image src={segment.gifUrl} alt={`Phần ${index + 1} của câu chuyện`} layout="fill" objectFit="contain" className="bg-white" unoptimized data-ai-hint="story segment gif"/>
                                 <Button
                                   onClick={() => handleDownloadGif(segment.gifUrl, index)}
@@ -599,7 +640,7 @@ export default function MagicalGifMakerPage() {
         )}
 
 
-        {statusMessage && (
+        {statusMessage && !isProcessing && currentGeneratedFrames.length === 0 && (
           <div id="status-display" className="text-center text-sm md:text-base text-foreground p-3 bg-card/70 backdrop-blur-sm rounded-lg shadow-md border border-primary/20 transition-all duration-300">
             {statusMessage}
           </div>
@@ -608,9 +649,8 @@ export default function MagicalGifMakerPage() {
 
       <footer className="mt-auto pt-12 text-center text-sm text-muted-foreground">
         <p>&copy; {new Date().getFullYear()} DoodleGIF. Được hỗ trợ bởi Phép Thuật AI.</p>
+        <p className="text-xs mt-1">Lưu ý: Việc tạo ảnh GIF có thể mất một chút thời gian. Hãy kiên nhẫn nhé!</p>
       </footer>
     </div>
   );
 }
-    
-    
