@@ -4,10 +4,17 @@
 import { refinePrompt, type RefinePromptInput as RefinePromptInputType, type RefinePromptOutput } from '@/ai/flows/prompt-refinement';
 import { generateFrames, type GenerateFramesInput as GenerateFramesInputType, type GenerateFramesOutput } from '@/ai/flows/frame-generation';
 
-// Re-exporting with potentially extended types if needed in the future,
-// but for now, they match the flow types.
-export type RefinePromptInput = RefinePromptInputType;
-export type GenerateFramesInput = GenerateFramesInputType;
+// Extended types for story mode
+export type RefinePromptInput = RefinePromptInputType & {
+  isContinuation?: boolean;
+  previousSegmentRefinedPrompt?: string;
+};
+
+export type GenerateFramesInput = GenerateFramesInputType & {
+  initialFrameReferenceDataUri?: string; // Can be initial user upload or last frame of previous segment
+  isFirstSegment?: boolean;
+};
+
 
 // Helper function to safely get a string message from an unknown error type
 function getErrorMessage(error: unknown, defaultMessage: string): string {
@@ -27,7 +34,12 @@ function getErrorMessage(error: unknown, defaultMessage: string): string {
 
 export async function refineUserPrompt(input: RefinePromptInput): Promise<RefinePromptOutput> {
   try {
-    const result = await refinePrompt(input);
+    // Ensure uploadedImageDataUri is string | undefined, not null
+    const validatedInput = {
+      ...input,
+      uploadedImageDataUri: input.uploadedImageDataUri === null ? undefined : input.uploadedImageDataUri,
+    };
+    const result = await refinePrompt(validatedInput);
     return result;
   } catch (error) {
     console.error("[refineUserPrompt Action] Original error details:", JSON.stringify(error, Object.getOwnPropertyNames(error || {}), 2));
@@ -39,7 +51,12 @@ export async function refineUserPrompt(input: RefinePromptInput): Promise<Refine
 
 export async function generateImageFrames(input: GenerateFramesInput): Promise<GenerateFramesOutput> {
   try {
-    const result = await generateFrames(input);
+     // Ensure initialFrameReferenceDataUri is string | undefined, not null
+     const validatedInput = {
+      ...input,
+      initialFrameReferenceDataUri: input.initialFrameReferenceDataUri === null ? undefined : input.initialFrameReferenceDataUri,
+    };
+    const result = await generateFrames(validatedInput);
     return result;
   } catch (error) {
     console.error("[generateImageFrames Action] Original error details:", JSON.stringify(error, Object.getOwnPropertyNames(error || {}), 2));
@@ -48,3 +65,5 @@ export async function generateImageFrames(input: GenerateFramesInput): Promise<G
     throw new Error(message);
   }
 }
+    
+    
