@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, Image as ImageIcon } from 'lucide-react';
-import { refineUserPrompt, generateImageFrames } from './actions';
+import { refineUserPrompt, generateImageFrames, type RefinePromptInput, type GenerateFramesInput } from './actions';
 import { createGifFromPngs } from '@/lib/gif-utils';
 import { useToast } from "@/hooks/use-toast";
 
@@ -77,18 +77,25 @@ export default function MagicalGifMakerPage() {
     toast({ title: "Hãy để phép thuật bắt đầu!", description: "Đang tinh chỉnh lời nhắc của bạn..." });
 
     try {
-      const refinedResult = await refineUserPrompt({ 
+      const refineInputArgs: RefinePromptInput = {
         originalPrompt: promptValue,
-        uploadedImageDataUri: uploadedImageDataUri
-      });
+      };
+      if (uploadedImageDataUri) {
+        refineInputArgs.uploadedImageDataUri = uploadedImageDataUri;
+      }
+      const refinedResult = await refineUserPrompt(refineInputArgs);
+
       setRefinedPromptText(refinedResult.refinedPrompt);
       setStatusMessage('🎨 Đang tạo các khung hình doodle...');
       toast({ title: "Lời Nhắc Đã Được Tinh Chỉnh!", description: "Đang tạo các khung hình ảnh..." });
 
-      const framesResult = await generateImageFrames({ 
+      const framesInputArgs: GenerateFramesInput = {
         refinedPrompt: refinedResult.refinedPrompt,
-        uploadedImageDataUri: uploadedImageDataUri 
-      });
+      };
+      if (uploadedImageDataUri) {
+        framesInputArgs.uploadedImageDataUri = uploadedImageDataUri;
+      }
+      const framesResult = await generateImageFrames(framesInputArgs);
       
       if (!framesResult.frameUrls || framesResult.frameUrls.length === 0) {
         setStatusMessage('⚠️ Ôi không! AI không thể tạo ra khung hình nào. Hãy thử một ý tưởng khác nhé?');
@@ -99,7 +106,7 @@ export default function MagicalGifMakerPage() {
       
       setGeneratedFrames(framesResult.frameUrls);
 
-      if (framesResult.frameUrls.length < 2) {
+      if (framesResult.frameUrls.length < 2) { // Needs at least 2 for a GIF, even though we aim for 10
         setStatusMessage('⚠️ Rất tiếc! Không đủ khung hình để tạo điều kỳ diệu. Hãy thử một ý tưởng khác nhé?');
         toast({ variant: "destructive", title: "Lỗi Tạo Ảnh", description: "Không thể tạo đủ khung hình cho GIF." });
         setIsGenerating(false);
