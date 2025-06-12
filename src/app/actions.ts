@@ -1,8 +1,13 @@
 
 'use server';
 
-import { refinePrompt, type RefinePromptInput, type RefinePromptOutput } from '@/ai/flows/prompt-refinement';
-import { generateFrames, type GenerateFramesInput, type GenerateFramesOutput } from '@/ai/flows/frame-generation';
+import { refinePrompt, type RefinePromptInput as RefinePromptInputType, type RefinePromptOutput } from '@/ai/flows/prompt-refinement';
+import { generateFrames, type GenerateFramesInput as GenerateFramesInputType, type GenerateFramesOutput } from '@/ai/flows/frame-generation';
+
+// Re-exporting with potentially extended types if needed in the future,
+// but for now, they match the flow types.
+export type RefinePromptInput = RefinePromptInputType;
+export type GenerateFramesInput = GenerateFramesInputType;
 
 export async function refineUserPrompt(input: RefinePromptInput): Promise<RefinePromptOutput> {
   try {
@@ -10,7 +15,6 @@ export async function refineUserPrompt(input: RefinePromptInput): Promise<Refine
     return result;
   } catch (error) {
     console.error("Error refining prompt:", error);
-    // Ensure the error message is propagated or a generic one is used
     const message = error instanceof Error ? error.message : "Không thể tinh chỉnh lời nhắc. Vui lòng thử lại.";
     throw new Error(message);
   }

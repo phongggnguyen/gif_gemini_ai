@@ -9,10 +9,30 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, Image as ImageIcon } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, ImageIcon, Palette, Smile } from 'lucide-react';
 import { refineUserPrompt, generateImageFrames, type RefinePromptInput, type GenerateFramesInput } from './actions';
 import { createGifFromPngs } from '@/lib/gif-utils';
 import { useToast } from "@/hooks/use-toast";
+
+const STYLE_OPTIONS = [
+  { value: 'default', label: 'Mặc định (Doodle)' },
+  { value: 'pixel-art', label: 'Pixel Art' },
+  { value: 'watercolor', label: 'Màu nước' },
+  { value: 'pencil-sketch', label: 'Phác thảo chì' },
+  { value: '90s-cartoon', label: 'Hoạt hình thập niên 90' },
+  { value: 'sticker', label: 'Nhãn dán (Sticker)'},
+  { value: 'isometric', label: 'Isometric 3D'}
+];
+
+const MOOD_OPTIONS = [
+  { value: 'default', label: 'Mặc định (Như mô tả)' },
+  { value: 'joyful', label: 'Vui nhộn' },
+  { value: 'fantasy', label: 'Huyền ảo' },
+  { value: 'mysterious', label: 'Bí ẩn' },
+  { value: 'calm', label: 'Yên bình' },
+  { value: 'energetic', label: 'Năng động'}
+];
 
 export default function MagicalGifMakerPage() {
   const [promptValue, setPromptValue] = useState<string>('một chú chó shiba đang ăn kem');
@@ -24,6 +44,8 @@ export default function MagicalGifMakerPage() {
   const [refinedPromptText, setRefinedPromptText] = useState<string | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [uploadedImageDataUri, setUploadedImageDataUri] = useState<string | undefined>(undefined);
+  const [selectedStyle, setSelectedStyle] = useState<string>('default');
+  const [selectedMood, setSelectedMood] = useState<string>('default');
 
 
   const { toast } = useToast();
@@ -79,10 +101,11 @@ export default function MagicalGifMakerPage() {
     try {
       const refineInputArgs: RefinePromptInput = {
         originalPrompt: promptValue,
+        ...(uploadedImageDataUri && { uploadedImageDataUri }),
+        ...(selectedStyle !== 'default' && { selectedStyle }),
+        ...(selectedMood !== 'default' && { selectedMood }),
       };
-      if (uploadedImageDataUri) {
-        refineInputArgs.uploadedImageDataUri = uploadedImageDataUri;
-      }
+      
       const refinedResult = await refineUserPrompt(refineInputArgs);
 
       setRefinedPromptText(refinedResult.refinedPrompt);
@@ -91,10 +114,11 @@ export default function MagicalGifMakerPage() {
 
       const framesInputArgs: GenerateFramesInput = {
         refinedPrompt: refinedResult.refinedPrompt,
+        ...(uploadedImageDataUri && { uploadedImageDataUri }),
+        ...(selectedStyle !== 'default' && { selectedStyle }),
+        ...(selectedMood !== 'default' && { selectedMood }),
       };
-      if (uploadedImageDataUri) {
-        framesInputArgs.uploadedImageDataUri = uploadedImageDataUri;
-      }
+      
       const framesResult = await generateImageFrames(framesInputArgs);
       
       if (!framesResult.frameUrls || framesResult.frameUrls.length === 0) {
@@ -106,7 +130,7 @@ export default function MagicalGifMakerPage() {
       
       setGeneratedFrames(framesResult.frameUrls);
 
-      if (framesResult.frameUrls.length < 2) { // Needs at least 2 for a GIF, even though we aim for 10
+      if (framesResult.frameUrls.length < 2) {
         setStatusMessage('⚠️ Rất tiếc! Không đủ khung hình để tạo điều kỳ diệu. Hãy thử một ý tưởng khác nhé?');
         toast({ variant: "destructive", title: "Lỗi Tạo Ảnh", description: "Không thể tạo đủ khung hình cho GIF." });
         setIsGenerating(false);
@@ -165,7 +189,7 @@ export default function MagicalGifMakerPage() {
               Tạo Ảnh GIF Mới
             </CardTitle>
             <CardDescription>
-              Mô tả ý tưởng của bạn và tùy chọn tải lên một hình ảnh để AI lấy làm tham chiếu.
+              Mô tả ý tưởng, chọn phong cách, tâm trạng và tùy chọn tải lên hình ảnh tham chiếu.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 space-y-6">
@@ -187,11 +211,52 @@ export default function MagicalGifMakerPage() {
                 required
               />
             </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="style-select" className="text-base font-semibold flex items-center gap-2">
+                  <Palette className="h-5 w-5 text-muted-foreground" />
+                  Phong Cách
+                </Label>
+                <Select value={selectedStyle} onValueChange={setSelectedStyle} disabled={isGenerating}>
+                  <SelectTrigger id="style-select" className="w-full">
+                    <SelectValue placeholder="Chọn phong cách" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STYLE_OPTIONS.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="mood-select" className="text-base font-semibold flex items-center gap-2">
+                  <Smile className="h-5 w-5 text-muted-foreground" />
+                  Tâm Trạng
+                </Label>
+                <Select value={selectedMood} onValueChange={setSelectedMood} disabled={isGenerating}>
+                  <SelectTrigger id="mood-select" className="w-full">
+                    <SelectValue placeholder="Chọn tâm trạng" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MOOD_OPTIONS.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
 
             <div className="space-y-2">
               <Label htmlFor="image-upload" className="text-base font-semibold flex items-center gap-2">
                 <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                Tải Ảnh Lên (Tùy chọn)
+                Tải Ảnh Lên (Tùy chọn tham chiếu)
               </Label>
               <Input
                 id="image-upload"
@@ -312,3 +377,5 @@ export default function MagicalGifMakerPage() {
     </div>
   );
 }
+
+    
