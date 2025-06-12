@@ -4,7 +4,7 @@
 /**
  * @fileOverview Refines the user's prompt.
  * If it's a continuation of a story, it uses the previous segment's context.
- * If an image is provided (initial or last frame of prev segment), it's used as a primary reference.
+ * If an image is provided (initial, or last frame of prev segment, or new upload for current segment), it's used as a primary reference.
  * Incorporates selected style and mood.
  *
  * - refinePrompt - A function that refines the prompt.
@@ -19,11 +19,11 @@ const RefinePromptInputSchema = z.object({
   originalPrompt: z
     .string()
     .describe('The original prompt for the first segment, or the user input for what happens next in a story.'),
-  uploadedImageDataUri: z // For first segment: user's image. For continuation: last frame of previous segment.
+  uploadedImageDataUri: z 
     .string()
     .optional()
     .describe(
-      "Optional. A reference image as a data URI. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+      "Optional. A primary reference image as a data URI. For the first segment, this is the user's initial upload. For continuation segments, this could be a new image uploaded by the user for *this specific segment*, or if none, it's the last frame of the previous segment. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
   selectedStyle: z
     .string()
@@ -69,16 +69,20 @@ Target Mood: "{{#if selectedMood}}{{selectedMood}}{{else}}as per prompt or neutr
   This is a continuation of an animated story.
   The previous part of the story was (this is the refined description for the previous segment): "{{{previousSegmentRefinedPrompt}}}".
   {{#if uploadedImageDataUri}}
-  An image representing the FINAL SCENE of the PREVIOUS story segment is provided. This image is the PRIMARY VISUAL STARTING POINT for THIS NEW segment.
-  Your refined prompt MUST describe the subject and scene CONTINUING DIRECTLY from this provided image, adapting to the new user input.
-  Image reference of previous segment's end: {{media url=uploadedImageDataUri}}
+  An image has been provided as the PRIMARY VISUAL REFERENCE for THIS NEW story segment.
+  This image could be a new one uploaded by the user specifically for this current segment, or if no new image was provided by the user for this segment, it is the FINAL SCENE of the PREVIOUS story segment.
+  In either case, this image is the main visual starting point for the actions in THIS segment.
+  Your refined prompt MUST describe the subject and scene CONTINUING from this provided image, adapting to the new user input for this segment: "{{{originalPrompt}}}".
+  Primary image reference for this current segment: {{media url=uploadedImageDataUri}}
+  {{else}}
+  No specific image reference was provided for this continuing segment (other than the context from the previous refined prompt). Describe the scene based on the previous story context and the new user input.
   {{/if}}
-  The user wants the story to continue with this new action/event: "{{{originalPrompt}}}"
+  The user wants the story to continue with this new action/event for THIS CURRENT segment: "{{{originalPrompt}}}"
   
   Your task: Create a refined prompt for the NEXT segment. This prompt should:
-  1. Describe the scene starting from the visual context of the provided image (if any).
+  1. Describe the scene starting from the visual context of the provided image (if any). If an image is provided, prioritize its subject and style adapting to the user's new action.
   2. Incorporate the user's new action/event ("{{{originalPrompt}}}").
-  3. Maintain consistency with the overall story, subject appearance, art style ("{{#if selectedStyle}}{{selectedStyle}}{{else}}doodle{{/if}}"), and mood ("{{#if selectedMood}}{{selectedMood}}{{else}}as per prompt{{/if}}").
+  3. Maintain consistency with the overall story, subject appearance (especially if derived from an image), art style ("{{#if selectedStyle}}{{selectedStyle}}{{else}}doodle{{/if}}"), and mood ("{{#if selectedMood}}{{selectedMood}}{{else}}as per prompt{{/if}}").
   4. Clearly describe the visual elements and actions for this new segment.
   Refined Prompt for this CONTINUING segment:
 {{else}}

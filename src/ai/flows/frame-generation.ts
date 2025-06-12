@@ -5,7 +5,7 @@
  * @fileOverview Frame generation flow.
  * For the first segment: uses refined prompt, optional uploaded image, style/mood.
  * For continuation segments: uses refined prompt (which includes story context),
- * the last frame of the previous segment as visual reference, style/mood.
+ * a reference image (which could be a new user upload for this segment OR the last frame of the previous segment), style/mood.
  *
  * - generateFrames - A function that handles the frame generation process.
  * - GenerateFramesInput - The input type for the generateFrames function.
@@ -19,11 +19,11 @@ const GenerateFramesInputSchema = z.object({
   refinedPrompt: z
     .string()
     .describe('A detailed refined prompt for the current animation segment, incorporating story context, style, and mood.'),
-  initialFrameReferenceDataUri: z // For segment 1: user's initial upload. For segment 2+: last frame of prev segment.
+  initialFrameReferenceDataUri: z 
     .string()
     .optional()
     .describe(
-      "Optional. A reference image data URI. If first segment, it's the user's upload. If continuation, it's the last frame of the previous segment. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+      "Optional. A reference image data URI. If this is the first segment of a story, it's the user's initial upload. If this is a continuation segment, it's EITHER a new image uploaded by the user for THIS specific segment OR the last frame of the previous segment if no new image was provided. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
   selectedStyle: z
     .string()
@@ -55,7 +55,7 @@ const generateFramesFlow = ai.defineFlow(
   },
   async input => {
     const frameUrls: string[] = [];
-    let previousFrameInternalUrl: string | null = null; // Stores the last frame generated *within this current segment*
+    let previousFrameInternalUrl: string | null = null; 
     const numberOfFrames = 10; 
 
     const baseStyleInstruction = input.selectedStyle && input.selectedStyle !== 'default' ? `The desired art style is "${input.selectedStyle}".` : 'The desired art style is a simple "doodle" or "cartoonish" style.';
@@ -67,26 +67,28 @@ const generateFramesFlow = ai.defineFlow(
       let textPromptContent: string;
 
       if (i === 0) { // First frame of the CURRENT segment
-        if (input.isFirstSegment) {
-            if (input.initialFrameReferenceDataUri) {
+        if (input.isFirstSegment) { // Very first segment of the entire story
+            if (input.initialFrameReferenceDataUri) { // User uploaded an initial image for the story
                 textPromptContent = `Generate the FIRST image frame for the VERY START of an animation. ${baseStyleInstruction} ${baseMoodInstruction} The user's detailed prompt for the animation is: "${input.refinedPrompt}". CRITICALLY, the main subject of THIS FRAME MUST be based on the provided image. Adapt the subject from the image into the requested style and mood. ${backgroundInstruction} This is the very first frame of an animation sequence.`;
                 promptPayload = [ {media: {url: input.initialFrameReferenceDataUri}}, {text: textPromptContent} ];
-            } else {
+            } else { // No initial image uploaded for the story
                 textPromptContent = `Generate the FIRST image frame for the VERY START of an animation. ${baseStyleInstruction} ${baseMoodInstruction} The frame should be based on the following detailed prompt: "${input.refinedPrompt}". ${backgroundInstruction} This is the very first frame of an animation sequence.`;
                 promptPayload = textPromptContent;
             }
-        } else { // First frame of a CONTINUING segment
-            if (input.initialFrameReferenceDataUri) { // This URI is the last frame of the previous segment
-                textPromptContent = `Generate the FIRST image frame for a CONTINUING segment of an animation. ${baseStyleInstruction} ${baseMoodInstruction} The provided image is the LAST frame of the PREVIOUS story segment. Use it as the DIRECT visual starting point for THIS new segment. The overall story description for THIS CURRENT segment is: "${input.refinedPrompt}". Ensure the subject, style, and scene flow logically from the provided image, incorporating the new actions/details from the refined prompt. ${backgroundInstruction}`;
+        } else { // First frame of a CONTINUING segment (not the very first segment of the story)
+            if (input.initialFrameReferenceDataUri) { // A reference image IS provided for this continuing segment
+                // This URI could be a NEW user upload for this segment, OR the last frame of the previous segment.
+                // The refinedPrompt should already guide the AI on how to interpret this image.
+                textPromptContent = `Generate the FIRST image frame for a CONTINUING segment of an animation. ${baseStyleInstruction} ${baseMoodInstruction} The provided image is the PRIMARY VISUAL REFERENCE for starting THIS new segment. Use it as the DIRECT visual starting point. The story for THIS CURRENT segment (incorporating the image context) is: "${input.refinedPrompt}". Ensure the subject, style, and scene flow logically from the provided image, incorporating new actions/details. ${backgroundInstruction}`;
                 promptPayload = [ {media: {url: input.initialFrameReferenceDataUri}}, {text: textPromptContent} ];
-            } else { // Should not happen if logic is correct (continuation implies a previous segment)
-                textPromptContent = `Generate the FIRST image frame for a CONTINUING segment of an animation (but no previous frame reference was found - this is unusual). ${baseStyleInstruction} ${baseMoodInstruction} The story for this segment is: "${input.refinedPrompt}". ${backgroundInstruction}`;
+            } else { // No reference image for this continuing segment (highly unlikely if logic is correct, as prev frame should exist)
+                textPromptContent = `Generate the FIRST image frame for a CONTINUING segment of an animation (but no primary reference image was found for this segment - this is unusual). ${baseStyleInstruction} ${baseMoodInstruction} The story for this segment is: "${input.refinedPrompt}". ${backgroundInstruction}`;
                 promptPayload = textPromptContent;
-                console.warn("Generating continuation segment's first frame without a previous frame reference.");
+                console.warn("Generating continuation segment's first frame without a primary reference image (initialFrameReferenceDataUri). Refined prompt should still guide.");
             }
         }
       } else { // Subsequent frames (2nd to Nth) WITHIN the current segment
-        textPromptContent = `Generate the NEXT frame in an animation sequence for the CURRENT segment. ${baseStyleInstruction} ${baseMoodInstruction} The overall story for THIS CURRENT segment is described by: "${input.refinedPrompt}". ${input.isFirstSegment && input.initialFrameReferenceDataUri ? "The very first frame of the whole animation was based on an image uploaded by the user, which set the appearance of the main subject." : ""} ${!input.isFirstSegment && input.initialFrameReferenceDataUri ? "This segment started based on the last frame of the previous segment." : ""} This frame MUST maintain consistency with the PREVIOUS frame provided (style, subject details, colors, and overall scene composition, fitting the requested style and mood for this segment). ${backgroundInstruction}`;
+        textPromptContent = `Generate the NEXT frame in an animation sequence for the CURRENT segment. ${baseStyleInstruction} ${baseMoodInstruction} The overall story for THIS CURRENT segment is described by: "${input.refinedPrompt}". ${input.initialFrameReferenceDataUri ? "This segment started based on a primary reference image (user upload or previous frame)." : "This segment started based on prompt only."} This frame MUST maintain consistency with the PREVIOUS frame provided (style, subject details, colors, and overall scene composition, fitting the requested style and mood for this segment). ${backgroundInstruction}`;
         if (!previousFrameInternalUrl) {
              throw new Error(`Cannot generate frame ${i+1} of current segment without a previous internal frame. This should not happen.`);
         }
@@ -101,7 +103,7 @@ const generateFramesFlow = ai.defineFlow(
         prompt: promptPayload,
         config: {
           responseModalities: ['TEXT', 'IMAGE'],
-           safetySettings: [ // Added safety settings as an example, adjust as needed
+           safetySettings: [ 
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
             { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -114,7 +116,7 @@ const generateFramesFlow = ai.defineFlow(
         frameUrls.push(media.url);
         previousFrameInternalUrl = media.url; 
       } else {
-        const errorContext = `Segment (isFirst: ${input.isFirstSegment}), Frame ${i+1} generation failed. Style: ${input.selectedStyle || 'doodle'}, Mood: ${input.selectedMood || 'default'}. Refined Prompt: "${input.refinedPrompt.substring(0,100)}...". Initial Ref Image Provided: ${!!input.initialFrameReferenceDataUri}`;
+        const errorContext = `Segment (isFirst: ${input.isFirstSegment}), Frame ${i+1} generation failed. Style: ${input.selectedStyle || 'doodle'}, Mood: ${input.selectedMood || 'default'}. Refined Prompt: "${input.refinedPrompt.substring(0,100)}...". Initial Ref Image Provided For Segment: ${!!input.initialFrameReferenceDataUri}`;
         console.warn(errorContext);
         
         if (i === 0) {
