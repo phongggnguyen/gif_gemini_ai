@@ -24,13 +24,13 @@ const GenerateFramesInputSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Optional. For the FIRST segment, this is the user's initial upload. For CONTINUATION segments, this is the NEW image uploaded by the user for THIS specific segment, IF ANY. If no new image for a continuation segment, this might be undefined or could be the last frame of previous (though lastFrameOfPreviousSegmentDataUri is more specific for that)."
+      "Optional. For the FIRST segment, this is the user's initial upload. For CONTINUATION segments, this is THE primary visual reference for THIS segment. It could be a NEW image uploaded by the user for THIS specific segment, OR if no new image, it will be the last frame of the previous segment."
     ),
   lastFrameOfPreviousSegmentDataUri: z
     .string()
     .optional()
     .describe(
-      "Optional. Only used for continuation segments. This is the data URI of the last frame from the IMMEDIATELY PRECEDING segment. Used to maintain consistency of existing subjects."
+      "Optional. Only used for continuation segments. This is the data URI of the last frame from the IMMEDIATELY PRECEDING segment. Used to provide context of existing subjects, especially when a new image is also provided for the current segment."
     ),
   newImageProvidedForCurrentSegment: z.boolean().optional().default(false)
     .describe('Whether the initialFrameReferenceDataUri for this segment is a new user upload specific to this current segment.'),
@@ -85,45 +85,55 @@ const generateFramesFlow = ai.defineFlow(
                 promptPayload = textPromptContent;
             }
         } else { // First frame of a CONTINUING segment (not the very first segment of the story)
+            // For continuation, initialFrameReferenceDataUri is THE primary visual reference for THIS segment.
+            // It's either the NEW uploaded image for this segment, OR the last frame of the previous segment if no new one was uploaded.
+            // lastFrameOfPreviousSegmentDataUri provides context for what existed before, especially if a NEW image is introduced.
+
+            // Constructing promptPayload for continuation
+            const mediaParts = [];
             textPromptContent = `You are generating the FIRST image frame of a CONTINUING animation segment.
 The detailed refined story for THIS segment is: "${input.refinedPrompt}".
 ${baseStyleInstruction} ${baseMoodInstruction} ${backgroundInstruction}
 
-The PREVIOUS animation segment ended with this scene: {{media url="${input.lastFrameOfPreviousSegmentDataUri}"}}
-
 {{#if newImageProvidedForCurrentSegment}}
-The user ALSO uploaded a NEW image specifically for THIS current segment: {{media url="${input.initialFrameReferenceDataUri}"}}.
-The refined story ("${input.refinedPrompt}") may describe a new subject appearing or a significant change.
+A NEW image has been uploaded by the user for THIS specific segment: {{media url="${input.initialFrameReferenceDataUri}"}}. This image is the PRIMARY VISUAL REFERENCE for any NEW subjects or significant changes described in "${input.refinedPrompt}".
+The PREVIOUS animation segment ended with this scene (for context of existing subjects): {{media url="${input.lastFrameOfPreviousSegmentDataUri}"}}.
+
 Task for THIS FRAME:
-1. Re-draw the scene from the PREVIOUS segment's last frame (using its media input) as the base. Maintain existing subjects from it as faithfully as possible in terms of appearance and position.
-2. If "${input.refinedPrompt}" introduces a NEW subject, draw that NEW subject based on the NEWLY UPLOADED image (using its media input), incorporating it into the scene with the existing subjects.
-3. If the new image and refined prompt imply a replacement or major overhaul of an existing subject with the new image's content, prioritize that.
+1. Re-draw the scene from the PREVIOUS segment's last frame (using its media input - lastFrameOfPreviousSegmentDataUri) as the BASE, maintaining existing subjects from it as faithfully as possible in terms of appearance and position.
+2. If "${input.refinedPrompt}" introduces a NEW subject, draw that NEW subject based on the NEWLY UPLOADED image (using its media input - initialFrameReferenceDataUri), incorporating it into the scene with the existing subjects.
+3. If the new image and refined prompt imply a replacement or major overhaul of an existing subject *with the content from the new image*, prioritize that.
 4. The overall action and composition should follow "${input.refinedPrompt}".
 Ensure the new frame logically continues the story, maintaining the established style and mood.
 {{else}}
-{{! No new image uploaded for THIS segment. initialFrameReferenceDataUri might be the same as lastFrameOfPreviousSegmentDataUri or undefined if logic upstream differs. We primarily rely on lastFrameOfPreviousSegmentDataUri for visual continuity of existing scene. }}
+{{! No new image uploaded for THIS segment. initialFrameReferenceDataUri IS the last frame of the previous segment. }}
 The refined story for THIS segment is "${input.refinedPrompt}".
+The scene from the PREVIOUS segment's last frame is: {{media url="${input.initialFrameReferenceDataUri}"}}.
 Task for THIS FRAME:
-1. Directly CONTINUE the scene from the PREVIOUS segment's last frame (using its media input).
+1. Directly CONTINUE the scene from this provided image (which is the last frame of the previous segment).
 2. Evolve this scene according to "${input.refinedPrompt}". Maintain existing subjects from the previous frame as faithfully as possible in appearance and position.
 Ensure the new frame logically continues the story, maintaining the established style and mood.
 {{/if}}
 This is the first frame of this new segment. Subsequent frames in this segment will build upon this one.`;
             
-            // Constructing promptPayload for continuation
-            const mediaParts = [];
-            if (input.lastFrameOfPreviousSegmentDataUri) { // Always include if available for continuation
-                mediaParts.push({media: {url: input.lastFrameOfPreviousSegmentDataUri}});
+            // Always send initialFrameReferenceDataUri as it's the primary visual for THIS segment.
+            if (!input.initialFrameReferenceDataUri) {
+                throw new Error("Cannot generate continuation segment's first frame without initialFrameReferenceDataUri (either new upload or last frame of prev).");
             }
-            if (input.newImageProvidedForCurrentSegment && input.initialFrameReferenceDataUri && input.initialFrameReferenceDataUri !== input.lastFrameOfPreviousSegmentDataUri) {
-                 // Add the new image only if it's distinct and provided
-                mediaParts.push({media: {url: input.initialFrameReferenceDataUri}});
+            mediaParts.push({media: {url: input.initialFrameReferenceDataUri}});
+
+            // Only add lastFrameOfPreviousSegmentDataUri if it's different from initialFrameReferenceDataUri
+            // AND a new image was provided (meaning initialFrameReferenceDataUri IS the new image).
+            // This is to provide context of the *old* scene when a *new* image is introduced, without sending redundant image data.
+            if (input.newImageProvidedForCurrentSegment && input.lastFrameOfPreviousSegmentDataUri && input.lastFrameOfPreviousSegmentDataUri !== input.initialFrameReferenceDataUri) {
+                 mediaParts.push({media: {url: input.lastFrameOfPreviousSegmentDataUri}});
             }
             mediaParts.push({text: textPromptContent});
             promptPayload = mediaParts;
 
-            if (!input.lastFrameOfPreviousSegmentDataUri) {
-                console.warn("Continuations segment's first frame generating without lastFrameOfPreviousSegmentDataUri. This might lead to inconsistencies with prior subjects.");
+            if (!input.newImageProvidedForCurrentSegment && !input.lastFrameOfPreviousSegmentDataUri) {
+                // This case means it's a continuation, no new image, and somehow no last frame of prev. Should be caught by initialFrameReferenceDataUri check.
+                console.warn("Continuations segment's first frame generating without a clear reference image. This might lead to inconsistencies.");
             }
         }
       } else { // Subsequent frames (2nd to Nth) WITHIN the current segment
@@ -158,10 +168,15 @@ This is the first frame of this new segment. Subsequent frames in this segment w
         const errorContext = `Segment (isFirst: ${input.isFirstSegment}, newImgForSegment: ${input.newImageProvidedForCurrentSegment}), Frame ${i+1} generation failed. Style: ${input.selectedStyle || 'doodle'}, Mood: ${input.selectedMood || 'default'}. Refined Prompt: "${input.refinedPrompt.substring(0,100)}...". Initial Ref Img For Segment: ${!!input.initialFrameReferenceDataUri}, Prev Seg Last Frame: ${!!input.lastFrameOfPreviousSegmentDataUri}`;
         console.warn(errorContext);
         
+        let userMessage = `Không thể tạo khung hình ${i+1} của phân đoạn này.`;
         if (i === 0) {
-          throw new Error(`Không thể tạo khung hình đầu tiên của phân đoạn này. AI có thể gặp sự cố với lời nhắc, hình ảnh, phong cách hoặc tâm trạng được cung cấp. ${errorContext}`);
+          userMessage = `Không thể tạo khung hình đầu tiên của phân đoạn này. AI có thể gặp sự cố với lời nhắc, hình ảnh, phong cách hoặc tâm trạng được cung cấp.`;
+        } else {
+          userMessage = `Không thể tạo khung hình ${i+1} của phân đoạn này sau khi đã bắt đầu thành công. Điều này có thể do sự cố duy trì tính nhất quán hoặc sự cố AI tạm thời.`;
         }
-        throw new Error(`Không thể tạo khung hình ${i+1} của phân đoạn này sau khi đã bắt đầu thành công. Điều này có thể do sự cố duy trì tính nhất quán hoặc sự cố AI tạm thời. ${errorContext}`);
+        // Append detailed context for easier debugging if needed, but keep user message simple.
+        // throw new Error(`${userMessage} Chi tiết kỹ thuật: ${errorContext}`);
+        throw new Error(userMessage);
       }
     }
     
@@ -172,3 +187,4 @@ This is the first frame of this new segment. Subsequent frames in this segment w
     return {frameUrls};
   }
 );
+

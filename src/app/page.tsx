@@ -153,21 +153,26 @@ export default function MagicalGifMakerPage() {
     toast({ title: "Hãy để phép thuật bắt đầu!", description: "Đang tinh chỉnh lời nhắc của bạn..." });
 
     try {
-      // Determine image for prompt refinement
       let imageForRefinement: string | undefined = undefined;
       let newImageProvidedForCurrentRefinementSegment = false;
+      let previousSegmentRefinedPromptForRefinement: string | undefined = undefined;
+
       if (isInStoryMode) {
+          if (storySegments.length > 0) {
+            previousSegmentRefinedPromptForRefinement = storySegments[storySegments.length - 1].refinedPromptThisSegment;
+          }
           if (nextSegmentUserUploadedImageDataUri) {
               imageForRefinement = nextSegmentUserUploadedImageDataUri;
               newImageProvidedForCurrentRefinementSegment = true;
           } else if (storySegments.length > 0) {
               const prevSegment = storySegments[storySegments.length - 1];
               imageForRefinement = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
+              newImageProvidedForCurrentRefinementSegment = false; 
           }
       } else {
           imageForRefinement = initialUploadedImageDataUri;
           if (initialUploadedImageDataUri) {
-            newImageProvidedForCurrentRefinementSegment = true; // For the first segment, if image is there, it's "new"
+            newImageProvidedForCurrentRefinementSegment = true; 
           }
       }
 
@@ -176,9 +181,7 @@ export default function MagicalGifMakerPage() {
         uploadedImageDataUri: imageForRefinement,
         newImageProvidedForCurrentSegment: newImageProvidedForCurrentRefinementSegment,
         isContinuation: isInStoryMode,
-        ...(isInStoryMode && storySegments.length > 0 && { 
-            previousSegmentRefinedPrompt: storySegments[storySegments.length - 1].refinedPromptThisSegment,
-        }),
+        previousSegmentRefinedPrompt: previousSegmentRefinedPromptForRefinement,
         ...(selectedStyle !== 'default' && { selectedStyle }),
         ...(selectedMood !== 'default' && { selectedMood }),
       };
@@ -188,34 +191,39 @@ export default function MagicalGifMakerPage() {
       setStatusMessage('🎨 Đang tạo các khung hình doodle...');
       toast({ title: "Lời Nhắc Đã Được Tinh Chỉnh!", description: "Đang tạo các khung hình ảnh..." });
 
-      // Determine images for frame generation
-      let imageForFrameGeneration: string | undefined = undefined;
-      let lastFrameOfPrevSegmentForFrameGen: string | undefined = undefined;
-      let newImageProvidedForCurrentFrameSegment = false;
+      let frameGenInitialRef: string | undefined = undefined;
+      let frameGenLastFrameOfPrev: string | undefined = undefined;
+      let frameGenNewImageProvided = false;
 
       if (isInStoryMode) {
-          if (storySegments.length > 0) {
-            lastFrameOfPrevSegmentForFrameGen = storySegments[storySegments.length - 1].allFramesThisSegment[storySegments[storySegments.length - 1].allFramesThisSegment.length - 1];
-          }
-          if (nextSegmentUserUploadedImageDataUri) {
-              imageForFrameGeneration = nextSegmentUserUploadedImageDataUri;
-              newImageProvidedForCurrentFrameSegment = true;
-          } else {
-              imageForFrameGeneration = lastFrameOfPrevSegmentForFrameGen; // If no new image, use last frame of prev as primary ref
-          }
+        if (storySegments.length > 0) {
+          frameGenLastFrameOfPrev = storySegments[storySegments.length - 1].allFramesThisSegment[storySegments[storySegments.length - 1].allFramesThisSegment.length - 1];
+        }
+
+        if (nextSegmentUserUploadedImageDataUri) {
+          frameGenInitialRef = nextSegmentUserUploadedImageDataUri;
+          frameGenNewImageProvided = true;
+          // IMPORTANT: When a new image is provided for the current segment, 
+          // we still pass lastFrameOfPreviousSegmentDataUri for context in the prompt,
+          // but the frame generation flow will prioritize the new image for visual generation
+          // and might not use both image data uris in the actual gemini call to save tokens.
+        } else {
+          frameGenInitialRef = frameGenLastFrameOfPrev; // If no new image, use last frame of prev as primary ref for this segment
+          frameGenNewImageProvided = false;
+        }
       } else {
-          imageForFrameGeneration = initialUploadedImageDataUri;
-          if (initialUploadedImageDataUri) {
-            newImageProvidedForCurrentFrameSegment = true;
-          }
+        frameGenInitialRef = initialUploadedImageDataUri;
+        if (initialUploadedImageDataUri) {
+          frameGenNewImageProvided = true;
+        }
       }
       
       const framesInputArgs: GenerateFramesInput = {
         refinedPrompt: refinedResult.refinedPrompt,
-        initialFrameReferenceDataUri: imageForFrameGeneration,
-        lastFrameOfPreviousSegmentDataUri: lastFrameOfPrevSegmentForFrameGen,
-        newImageProvidedForCurrentSegment: newImageProvidedForCurrentFrameSegment,
-        isFirstSegment: !isInStoryMode && storySegments.length === 0,
+        initialFrameReferenceDataUri: frameGenInitialRef, 
+        lastFrameOfPreviousSegmentDataUri: frameGenLastFrameOfPrev, 
+        newImageProvidedForCurrentSegment: frameGenNewImageProvided,
+        isFirstSegment: !isInStoryMode || storySegments.length === 0,
         ...(selectedStyle !== 'default' && { selectedStyle }),
         ...(selectedMood !== 'default' && { selectedMood }),
       };
@@ -231,7 +239,7 @@ export default function MagicalGifMakerPage() {
       
       setCurrentGeneratedFrames(framesResult.frameUrls);
 
-      if (framesResult.frameUrls.length < 2) { // Though we aim for 10, min 2 for a GIF
+      if (framesResult.frameUrls.length < 2) { 
         setStatusMessage('⚠️ Rất tiếc! Không đủ khung hình để tạo điều kỳ diệu. Hãy thử một ý tưởng khác nhé?');
         toast({ variant: "destructive", title: "Lỗi Tạo Ảnh", description: "Không thể tạo đủ khung hình cho GIF." });
         if (isInStoryMode) setIsLoadingNextSegment(false); else setIsGenerating(false);
@@ -257,7 +265,7 @@ export default function MagicalGifMakerPage() {
       };
       setStorySegments(prev => [...prev, newSegment]);
       
-      if (!isInStoryMode && storySegments.length === 0) { // Only switch to story mode after the VERY first segment
+      if (!isInStoryMode && storySegments.length === 0) { 
         setIsInStoryMode(true); 
       }
       setNextStoryPromptInput(''); 
@@ -268,7 +276,7 @@ export default function MagicalGifMakerPage() {
 
     } catch (error: any) {
       console.error('Generation failed:', error);
-      const errorMessage = error.message || 'Một sự cố kỳ diệu không xác định đã xảy ra. Vui lòng thử lại.';
+      const errorMessage = getErrorMessage(error, 'Một sự cố kỳ diệu không xác định đã xảy ra. Vui lòng thử lại.');
       setStatusMessage(`❌ Ôi không! ${errorMessage}`);
       toast({ variant: "destructive", title: "Phép Thuật Thất Bại", description: errorMessage });
     } finally {
@@ -309,6 +317,27 @@ export default function MagicalGifMakerPage() {
 
   const isProcessing = isGenerating || isLoadingNextSegment;
   const canStartGeneration = (!isInStoryMode && promptValue.trim() !== "") || (isInStoryMode && nextStoryPromptInput.trim() !== "");
+
+  // Helper function to safely get a string message from an unknown error type
+  // Moved from actions.ts to be used client-side for toast messages if needed,
+  // or kept in actions.ts if preferred to centralize error message creation.
+  // For this specific case, if handleStartOrContinueStory catches an error from server action,
+  // that error should already be an Error object with a message.
+  function getErrorMessage(error: unknown, defaultMessage: string): string {
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error instanceof Error && typeof error.message === 'string') {
+      return error.message;
+    }
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      const messageValue = (error as { message: unknown }).message;
+      if (typeof messageValue === 'string') {
+        return messageValue;
+      }
+    }
+    return defaultMessage;
+  }
 
 
   return (
@@ -654,3 +683,4 @@ export default function MagicalGifMakerPage() {
     </div>
   );
 }
+
