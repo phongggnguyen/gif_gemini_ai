@@ -10,9 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, ImageIcon, Palette, Smile, BookOpen, CornerDownRight, FileImage, RotateCcw } from 'lucide-react';
+import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, ImageIcon, Palette, Smile, BookOpen, CornerDownRight, FileImage, RotateCcw, Type } from 'lucide-react';
 import { refineUserPrompt, generateImageFrames, type RefinePromptInput, type GenerateFramesInput } from './actions';
-import { createGifFromPngs } from '@/lib/gif-utils';
+import { createGifFromPngs, type TextOverlayOptions } from '@/lib/gif-utils';
 import { useToast } from "@/hooks/use-toast";
 
 const STYLE_OPTIONS = [
@@ -32,6 +32,20 @@ const MOOD_OPTIONS = [
   { value: 'mysterious', label: 'Bí ẩn' },
   { value: 'calm', label: 'Yên bình' },
   { value: 'energetic', label: 'Năng động'}
+];
+
+const FONT_FAMILY_OPTIONS = [
+  { value: 'Arial', label: 'Arial' },
+  { value: 'Verdana', label: 'Verdana' },
+  { value: 'Times New Roman', label: 'Times New Roman' },
+  { value: 'Comic Sans MS', label: 'Comic Sans MS' },
+  { value: 'Impact', label: 'Impact' },
+];
+
+const TEXT_POSITION_OPTIONS = [
+  { value: 'top-center', label: 'Trên Cùng - Giữa' },
+  { value: 'middle-center', label: 'Chính Giữa' },
+  { value: 'bottom-center', label: 'Dưới Cùng - Giữa' },
 ];
 
 interface StorySegment {
@@ -65,6 +79,13 @@ export default function MagicalGifMakerPage() {
   const [isLoadingNextSegment, setIsLoadingNextSegment] = useState<boolean>(false);
   const [nextSegmentUserUploadedImageDisplayUrl, setNextSegmentUserUploadedImageDisplayUrl] = useState<string | null>(null);
   const [nextSegmentUserUploadedImageDataUri, setNextSegmentUserUploadedImageDataUri] = useState<string | undefined>(undefined);
+
+  // Text Overlay State
+  const [textOverlayInput, setTextOverlayInput] = useState<string>('');
+  const [textOverlayColor, setTextOverlayColor] = useState<string>('#FFFFFF'); // Default white
+  const [textOverlayPosition, setTextOverlayPosition] = useState<TextOverlayOptions['position']>('bottom-center');
+  const [textOverlayFontFamily, setTextOverlayFontFamily] = useState<string>('Arial');
+  const [isApplyingTextOverlay, setIsApplyingTextOverlay] = useState<boolean>(false);
 
 
   const { toast } = useToast();
@@ -123,6 +144,11 @@ export default function MagicalGifMakerPage() {
     setCurrentGeneratedFrames([]);
     setCurrentGeneratedGifUrl(null);
     setCurrentRefinedPromptText(null);
+    // Reset text overlay inputs when starting a new generation
+    setTextOverlayInput('');
+    // setTextOverlayColor('#FFFFFF'); // Keep color preference or reset
+    // setTextOverlayPosition('bottom-center');
+    // setTextOverlayFontFamily('Arial');
     setActiveTab('frames');
   }
 
@@ -180,7 +206,7 @@ export default function MagicalGifMakerPage() {
         originalPrompt: currentPromptForGeneration,
         uploadedImageDataUri: imageForRefinement,
         newImageProvidedForCurrentSegment: newImageProvidedForCurrentRefinementSegment,
-        isContinuation: isInStoryMode,
+        isContinuation: isInStoryMode && storySegments.length > 0,
         previousSegmentRefinedPrompt: previousSegmentRefinedPromptForRefinement,
         ...(selectedStyle !== 'default' && { selectedStyle }),
         ...(selectedMood !== 'default' && { selectedMood }),
@@ -195,23 +221,18 @@ export default function MagicalGifMakerPage() {
       let frameGenLastFrameOfPrev: string | undefined = undefined;
       let frameGenNewImageProvided = false;
 
-      if (isInStoryMode) {
-        if (storySegments.length > 0) {
-          frameGenLastFrameOfPrev = storySegments[storySegments.length - 1].allFramesThisSegment[storySegments[storySegments.length - 1].allFramesThisSegment.length - 1];
-        }
+      if (isInStoryMode && storySegments.length > 0) { // Continuing story
+        const prevSegment = storySegments[storySegments.length - 1];
+        frameGenLastFrameOfPrev = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
 
-        if (nextSegmentUserUploadedImageDataUri) {
+        if (nextSegmentUserUploadedImageDataUri) { // New image for this segment
           frameGenInitialRef = nextSegmentUserUploadedImageDataUri;
           frameGenNewImageProvided = true;
-          // IMPORTANT: When a new image is provided for the current segment, 
-          // we still pass lastFrameOfPreviousSegmentDataUri for context in the prompt,
-          // but the frame generation flow will prioritize the new image for visual generation
-          // and might not use both image data uris in the actual gemini call to save tokens.
-        } else {
-          frameGenInitialRef = frameGenLastFrameOfPrev; // If no new image, use last frame of prev as primary ref for this segment
+        } else { // No new image, continue from prev segment's last frame
+          frameGenInitialRef = frameGenLastFrameOfPrev;
           frameGenNewImageProvided = false;
         }
-      } else {
+      } else { // First segment (either new story or single GIF mode)
         frameGenInitialRef = initialUploadedImageDataUri;
         if (initialUploadedImageDataUri) {
           frameGenNewImageProvided = true;
@@ -265,7 +286,7 @@ export default function MagicalGifMakerPage() {
       };
       setStorySegments(prev => [...prev, newSegment]);
       
-      if (!isInStoryMode && storySegments.length === 0) { 
+      if (!isInStoryMode) { 
         setIsInStoryMode(true); 
       }
       setNextStoryPromptInput(''); 
@@ -314,15 +335,55 @@ export default function MagicalGifMakerPage() {
     toast({ title: "Câu Chuyện Mới", description: "Đã đặt lại, sẵn sàng cho ý tưởng tiếp theo của bạn!" });
   };
 
+  const handleApplyTextOverlay = async () => {
+    if (!currentGeneratedFrames.length || !textOverlayInput.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Thiếu thông tin',
+        description: 'Vui lòng nhập nội dung chữ để thêm vào GIF.',
+      });
+      return;
+    }
+    setIsApplyingTextOverlay(true);
+    setStatusMessage('✍️ Đang thêm chữ vào GIF của bạn...');
+    toast({ title: 'Đang Xử Lý', description: 'Đang thêm lớp phủ văn bản vào GIF...' });
+
+    try {
+      const textOverlayOptions: TextOverlayOptions = {
+        text: textOverlayInput,
+        fontFamily: textOverlayFontFamily,
+        color: textOverlayColor,
+        position: textOverlayPosition,
+      };
+      const newGifUrl = await createGifFromPngs(currentGeneratedFrames, 4, textOverlayOptions);
+      setCurrentGeneratedGifUrl(newGifUrl);
+
+      // If the current GIF is the latest segment in the story, update its URL too
+      if (storySegments.length > 0) {
+        const latestSegmentId = storySegments[storySegments.length - 1].id;
+        setStorySegments(prevSegments =>
+          prevSegments.map(segment =>
+            segment.id === latestSegmentId ? { ...segment, gifUrl: newGifUrl } : segment
+          )
+        );
+      }
+      setStatusMessage('🎉 GIF với chữ đã được cập nhật!');
+      toast({ title: 'Thành Công!', description: 'Đã thêm chữ vào GIF của bạn.' });
+
+    } catch (error) {
+      console.error('Failed to apply text overlay:', error);
+      const errorMessage = getErrorMessage(error, 'Không thể thêm chữ vào GIF.');
+      setStatusMessage(`❌ ${errorMessage}`);
+      toast({ variant: 'destructive', title: 'Lỗi Thêm Chữ', description: errorMessage });
+    } finally {
+      setIsApplyingTextOverlay(false);
+    }
+  };
+
 
   const isProcessing = isGenerating || isLoadingNextSegment;
-  const canStartGeneration = (!isInStoryMode && promptValue.trim() !== "") || (isInStoryMode && nextStoryPromptInput.trim() !== "");
+  const canStartGeneration = (!isInStoryMode && promptValue.trim() !== "") || (isInStoryMode && storySegments.length === 0 && promptValue.trim() !== "") || (isInStoryMode && storySegments.length > 0 && nextStoryPromptInput.trim() !== "");
 
-  // Helper function to safely get a string message from an unknown error type
-  // Moved from actions.ts to be used client-side for toast messages if needed,
-  // or kept in actions.ts if preferred to centralize error message creation.
-  // For this specific case, if handleStartOrContinueStory catches an error from server action,
-  // that error should already be an Error object with a message.
   function getErrorMessage(error: unknown, defaultMessage: string): string {
     if (typeof error === 'string') {
       return error;
@@ -548,7 +609,7 @@ export default function MagicalGifMakerPage() {
             <CardHeader>
                 <CardTitle>Kết quả cho phần hiện tại</CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
+            <CardContent className="p-6 space-y-4">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'frames' | 'output')} className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-4 bg-muted/50 rounded-lg p-1">
                   <TabsTrigger value="frames" className="py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-md transition-all">Khung Hình Hiện Tại</TabsTrigger>
@@ -609,6 +670,81 @@ export default function MagicalGifMakerPage() {
                   </div>
                 </TabsContent>
               </Tabs>
+
+              {/* Text Overlay Section */}
+              {currentGeneratedGifUrl && currentGeneratedFrames.length > 0 && (
+                <Card className="mt-6 border-accent/50 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Type className="h-5 w-5 text-accent" />
+                      Thêm Chữ Vào GIF Hiện Tại (Tùy chọn)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="text-overlay-input">Nội dung chữ</Label>
+                      <Input
+                        id="text-overlay-input"
+                        value={textOverlayInput}
+                        onChange={(e) => setTextOverlayInput(e.target.value)}
+                        placeholder="Nhập chữ của bạn ở đây..."
+                        disabled={isApplyingTextOverlay}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="text-overlay-font">Phông chữ</Label>
+                        <Select value={textOverlayFontFamily} onValueChange={setTextOverlayFontFamily} disabled={isApplyingTextOverlay}>
+                          <SelectTrigger id="text-overlay-font">
+                            <SelectValue placeholder="Chọn phông chữ" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {FONT_FAMILY_OPTIONS.map(font => (
+                              <SelectItem key={font.value} value={font.value}>{font.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="text-overlay-color">Màu chữ</Label>
+                        <Input
+                          id="text-overlay-color"
+                          type="color"
+                          value={textOverlayColor}
+                          onChange={(e) => setTextOverlayColor(e.target.value)}
+                          className="h-10"
+                          disabled={isApplyingTextOverlay}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="text-overlay-position">Vị trí</Label>
+                        <Select value={textOverlayPosition} onValueChange={(v) => setTextOverlayPosition(v as TextOverlayOptions['position'])} disabled={isApplyingTextOverlay}>
+                          <SelectTrigger id="text-overlay-position">
+                            <SelectValue placeholder="Chọn vị trí" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TEXT_POSITION_OPTIONS.map(pos => (
+                              <SelectItem key={pos.value} value={pos.value}>{pos.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleApplyTextOverlay}
+                      disabled={isApplyingTextOverlay || !textOverlayInput.trim()}
+                      className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                    >
+                      {isApplyingTextOverlay ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-2 h-4 w-4" />
+                      )}
+                      Cập Nhật GIF Với Chữ
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
             </CardContent>
           </Card>
         )}
@@ -623,7 +759,7 @@ export default function MagicalGifMakerPage() {
                     <CardDescription>Các phần GIF đã tạo trong câu chuyện của bạn. Phần mới nhất sẽ hiển thị ở khu vực "Kết quả cho phần hiện tại" ở trên sau khi tạo xong.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 space-y-6">
-                    {storySegments.filter(segment => segment.gifUrl !== currentGeneratedGifUrl).map((segment, index) => (
+                    {storySegments.map((segment, index) => (
                         <div key={segment.id} className="p-4 border border-primary/20 rounded-lg bg-card/90 animate-fadeIn" style={{ animationDelay: `${index * 100}ms`}}>
                             <div className="flex flex-col sm:flex-row gap-4">
                                 {segment.uploadedImageForThisSegmentDisplayUrl && (
@@ -669,7 +805,7 @@ export default function MagicalGifMakerPage() {
         )}
 
 
-        {statusMessage && !isProcessing && currentGeneratedFrames.length === 0 && (
+        {statusMessage && (!isProcessing && !isApplyingTextOverlay) && (
           <div id="status-display" className="text-center text-sm md:text-base text-foreground p-3 bg-card/70 backdrop-blur-sm rounded-lg shadow-md border border-primary/20 transition-all duration-300">
             {statusMessage}
           </div>
@@ -683,4 +819,3 @@ export default function MagicalGifMakerPage() {
     </div>
   );
 }
-
