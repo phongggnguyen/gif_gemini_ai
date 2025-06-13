@@ -21,21 +21,23 @@ export type GenerateFramesInput = GenerateFramesInputType & {
 
 // Helper function to safely get a string message from an unknown error type
 function getErrorMessage(error: unknown, defaultMessage: string): string {
+  let rawMessage = '';
   if (typeof error === 'string') {
-    return error;
-  }
-  if (error instanceof Error && typeof error.message === 'string') {
-    return error.message;
-  }
-  // Check for error objects that might have a message property (like Genkit errors)
-  if (typeof error === 'object' && error !== null && 'message' in error) {
+    rawMessage = error;
+  } else if (error instanceof Error && typeof error.message === 'string') {
+    rawMessage = error.message;
+  } else if (typeof error === 'object' && error !== null && 'message' in error) {
     const messageValue = (error as { message: unknown }).message;
     if (typeof messageValue === 'string') {
-      return messageValue;
+      rawMessage = messageValue;
     }
   }
-  // Fallback to default message
-  return defaultMessage;
+
+  if (rawMessage.includes('503 Service Unavailable') || rawMessage.toLowerCase().includes('model is overloaded')) {
+    return 'Máy chủ AI hiện đang quá tải. Vui lòng thử lại sau ít phút.';
+  }
+  
+  return rawMessage || defaultMessage;
 }
 
 export async function refineUserPrompt(input: RefinePromptInput): Promise<RefinePromptOutput> {
@@ -87,3 +89,4 @@ export async function generateImageFrames(input: GenerateFramesInput): Promise<G
     throw new Error(message);
   }
 }
+
