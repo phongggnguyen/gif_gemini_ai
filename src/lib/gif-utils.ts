@@ -40,7 +40,11 @@ export async function createGifFromPngs(
 
   for (const dataUrl of pngDataUrls) {
     const image = await loadImage(dataUrl);
-    ctx.clearRect(0, 0, width, height);
+    
+    // Explicitly fill canvas with white background for every frame
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, width, height);
+    
     ctx.drawImage(image, 0, 0, width, height);
 
     if (textOverlay && textOverlay.text.trim() !== '') {
@@ -48,10 +52,8 @@ export async function createGifFromPngs(
       ctx.font = `bold ${fontSize}px ${textOverlay.fontFamily}`;
       ctx.fillStyle = textOverlay.color;
       ctx.textAlign = 'center';
-      // Add a slight stroke for better visibility, especially on complex backgrounds
-      ctx.strokeStyle = '#000'; // Black stroke
+      ctx.strokeStyle = '#000'; 
       ctx.lineWidth = Math.max(1, fontSize / 20);
-
 
       let x = width / 2;
       let y;
@@ -59,7 +61,7 @@ export async function createGifFromPngs(
       switch (textOverlay.position) {
         case 'top-center':
           ctx.textBaseline = 'top';
-          y = height * 0.05; // 5% from top
+          y = height * 0.05; 
           break;
         case 'middle-center':
           ctx.textBaseline = 'middle';
@@ -68,11 +70,10 @@ export async function createGifFromPngs(
         case 'bottom-center':
         default:
           ctx.textBaseline = 'bottom';
-          y = height * 0.95; // 5% from bottom
+          y = height * 0.95; 
           break;
       }
       
-      // Draw stroke then fill
       if (ctx.lineWidth > 0) {
         ctx.strokeText(textOverlay.text, x, y);
       }
@@ -80,15 +81,11 @@ export async function createGifFromPngs(
     }
 
     const imageData = ctx.getImageData(0, 0, width, height);
-    
-    // It's important to use a palette that includes the text color,
-    // or text might get quantized to an unexpected color.
-    // For simplicity, we're still using a 256 color palette.
-    // More advanced usage might involve creating a custom palette.
     const palette = quantize(imageData.data, 256, { format: 'rgba4444', oneBitAlpha: true });
     const index = applyPalette(imageData.data, palette, 'rgba4444');
     
-    gif.writeFrame(index, width, height, { palette, delay, transparent: true });
+    // Set transparent to false to ensure opaque GIF with the white background we drew
+    gif.writeFrame(index, width, height, { palette, delay, transparent: false });
   }
 
   gif.finish();
