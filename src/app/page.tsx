@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, ImageIcon, Palette, Smile, BookOpen, CornerDownRight, FileImage, RotateCcw, Type } from 'lucide-react';
+import { Wand2, Sparkles, Download, Loader2, AlertTriangle, Upload, ImageIcon, Palette, Smile, BookOpen, CornerDownRight, FileImage, RotateCcw, Type, DownloadCloud } from 'lucide-react';
 import { refineUserPrompt, generateImageFrames, type RefinePromptInput, type GenerateFramesInput } from './actions';
 import { createGifFromPngs, type TextOverlayOptions } from '@/lib/gif-utils';
 import { useToast } from "@/hooks/use-toast";
@@ -183,19 +183,17 @@ export default function MagicalGifMakerPage() {
       let newImageProvidedForCurrentRefinementSegment = false;
       let previousSegmentRefinedPromptForRefinement: string | undefined = undefined;
 
-      if (isInStoryMode) {
-          if (storySegments.length > 0) {
-            previousSegmentRefinedPromptForRefinement = storySegments[storySegments.length - 1].refinedPromptThisSegment;
-          }
-          if (nextSegmentUserUploadedImageDataUri) {
+      if (isInStoryMode && storySegments.length > 0) { // Continuing story logic
+          const prevSegment = storySegments[storySegments.length - 1];
+          previousSegmentRefinedPromptForRefinement = prevSegment.refinedPromptThisSegment;
+          if (nextSegmentUserUploadedImageDataUri) { // New image for this segment
               imageForRefinement = nextSegmentUserUploadedImageDataUri;
               newImageProvidedForCurrentRefinementSegment = true;
-          } else if (storySegments.length > 0) {
-              const prevSegment = storySegments[storySegments.length - 1];
+          } else { // No new image, use last frame of previous segment for refinement context
               imageForRefinement = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
               newImageProvidedForCurrentRefinementSegment = false; 
           }
-      } else {
+      } else { // First segment logic
           imageForRefinement = initialUploadedImageDataUri;
           if (initialUploadedImageDataUri) {
             newImageProvidedForCurrentRefinementSegment = true; 
@@ -217,33 +215,34 @@ export default function MagicalGifMakerPage() {
       setStatusMessage('🎨 Đang tạo các khung hình doodle...');
       toast({ title: "Lời Nhắc Đã Được Tinh Chỉnh!", description: "Đang tạo các khung hình ảnh..." });
 
-      let frameGenInitialRef: string | undefined = undefined;
-      let frameGenLastFrameOfPrev: string | undefined = undefined;
-      let frameGenNewImageProvided = false;
+      let frameGenInitialRefForThisSegment: string | undefined = undefined;
+      let frameGenLastFrameOfPrevSegmentForContext: string | undefined = undefined;
+      let frameGenNewImageProvidedForThisSegment = false;
 
-      if (isInStoryMode && storySegments.length > 0) { // Continuing story
+      if (isInStoryMode && storySegments.length > 0) { // Continuing story: determine refs for frame generation
         const prevSegment = storySegments[storySegments.length - 1];
-        frameGenLastFrameOfPrev = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
+        frameGenLastFrameOfPrevSegmentForContext = prevSegment.allFramesThisSegment[prevSegment.allFramesThisSegment.length - 1];
 
-        if (nextSegmentUserUploadedImageDataUri) { // New image for this segment
-          frameGenInitialRef = nextSegmentUserUploadedImageDataUri;
-          frameGenNewImageProvided = true;
-        } else { // No new image, continue from prev segment's last frame
-          frameGenInitialRef = frameGenLastFrameOfPrev;
-          frameGenNewImageProvided = false;
+        if (nextSegmentUserUploadedImageDataUri) { // New image uploaded for THIS segment
+          frameGenInitialRefForThisSegment = nextSegmentUserUploadedImageDataUri;
+          frameGenNewImageProvidedForThisSegment = true;
+        } else { // No new image for THIS segment, so the "initial" ref IS the last frame of prev
+          frameGenInitialRefForThisSegment = frameGenLastFrameOfPrevSegmentForContext;
+          frameGenNewImageProvidedForThisSegment = false;
         }
       } else { // First segment (either new story or single GIF mode)
-        frameGenInitialRef = initialUploadedImageDataUri;
+        frameGenInitialRefForThisSegment = initialUploadedImageDataUri;
         if (initialUploadedImageDataUri) {
-          frameGenNewImageProvided = true;
+          frameGenNewImageProvidedForThisSegment = true;
         }
+         // frameGenLastFrameOfPrevSegmentForContext remains undefined as it's the first segment
       }
       
       const framesInputArgs: GenerateFramesInput = {
         refinedPrompt: refinedResult.refinedPrompt,
-        initialFrameReferenceDataUri: frameGenInitialRef, 
-        lastFrameOfPreviousSegmentDataUri: frameGenLastFrameOfPrev, 
-        newImageProvidedForCurrentSegment: frameGenNewImageProvided,
+        initialFrameReferenceDataUri: frameGenInitialRefForThisSegment, 
+        lastFrameOfPreviousSegmentDataUri: frameGenLastFrameOfPrevSegmentForContext, 
+        newImageProvidedForCurrentSegment: frameGenNewImageProvidedForThisSegment,
         isFirstSegment: !isInStoryMode || storySegments.length === 0,
         ...(selectedStyle !== 'default' && { selectedStyle }),
         ...(selectedMood !== 'default' && { selectedMood }),
@@ -273,8 +272,7 @@ export default function MagicalGifMakerPage() {
       const gifUrl = await createGifFromPngs(framesResult.frameUrls, 4); // 4 FPS
       setCurrentGeneratedGifUrl(gifUrl);
       setStatusMessage('🎉 Xong! Phần GIF kỳ diệu của bạn đã sẵn sàng!');
-      toast({ title: "GIF Đã Sẵn Sàng!", description: "Hoạt ảnh kỳ diệu của bạn đã hoàn tất." });
-      setActiveTab('output');
+      
 
       const newSegment: StorySegment = {
         id: Date.now().toString(),
@@ -284,15 +282,30 @@ export default function MagicalGifMakerPage() {
         originalUserPromptThisSegment: currentPromptForGeneration,
         uploadedImageForThisSegmentDisplayUrl: isInStoryMode ? nextSegmentUserUploadedImageDisplayUrl : initialUploadedImageDisplayUrl,
       };
-      setStorySegments(prev => [...prev, newSegment]);
       
-      if (!isInStoryMode) { 
+      setStorySegments(prev => {
+          const updatedSegments = [...prev, newSegment];
+          // After adding new segment, if it was a story continuation, current GIF is now this new segment's GIF
+          if (isInStoryMode && updatedSegments.length > 0) {
+            setCurrentGeneratedGifUrl(updatedSegments[updatedSegments.length-1].gifUrl);
+            setCurrentGeneratedFrames(updatedSegments[updatedSegments.length-1].allFramesThisSegment);
+            setCurrentRefinedPromptText(updatedSegments[updatedSegments.length-1].refinedPromptThisSegment);
+            toast({ title: "Phần Mới Đã Được Thêm Vào Câu Chuyện!", description: "Hoạt ảnh của bạn đã được cập nhật." });
+          } else {
+            toast({ title: "GIF Đã Sẵn Sàng!", description: "Hoạt ảnh kỳ diệu của bạn đã hoàn tất." });
+          }
+          return updatedSegments;
+      });
+      
+      if (!isInStoryMode && framesResult.frameUrls.length > 0) { 
         setIsInStoryMode(true); 
       }
       setNextStoryPromptInput(''); 
       setNextSegmentUserUploadedImageDataUri(undefined);
       setNextSegmentUserUploadedImageDisplayUrl(null);
       if (nextSegmentFileInputRef.current) nextSegmentFileInputRef.current.value = '';
+      
+      setActiveTab('output');
 
 
     } catch (error: any) {
@@ -315,6 +328,24 @@ export default function MagicalGifMakerPage() {
     link.click();
     document.body.removeChild(link);
     toast({ title: "Bắt Đầu Tải Xuống", description: `${fileName} của bạn đang được tải xuống.`});
+  };
+
+  const handleDownloadSingleFrame = (dataUrl: string, frameIndex: number, segmentId?: string) => {
+    if (!dataUrl) return;
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    
+    let fileExtension = 'png'; // Default
+    const mimeTypeMatch = dataUrl.match(/^data:image\/([a-zA-Z+.-]+);/);
+    if (mimeTypeMatch && mimeTypeMatch[1]) {
+        fileExtension = mimeTypeMatch[1];
+    }
+    const segmentSuffix = segmentId ? `_phan-${storySegments.findIndex(s => s.id === segmentId) + 1}` : '';
+    link.download = `khung-hinh${segmentSuffix}_${frameIndex + 1}.${fileExtension}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "Bắt Đầu Tải Khung Hình", description: `${link.download} của bạn đang được tải xuống.`});
   };
   
   const handleResetStory = () => {
@@ -385,19 +416,23 @@ export default function MagicalGifMakerPage() {
   const canStartGeneration = (!isInStoryMode && promptValue.trim() !== "") || (isInStoryMode && storySegments.length === 0 && promptValue.trim() !== "") || (isInStoryMode && storySegments.length > 0 && nextStoryPromptInput.trim() !== "");
 
   function getErrorMessage(error: unknown, defaultMessage: string): string {
+    let rawMessage = '';
     if (typeof error === 'string') {
-      return error;
-    }
-    if (error instanceof Error && typeof error.message === 'string') {
-      return error.message;
-    }
-    if (typeof error === 'object' && error !== null && 'message' in error) {
+      rawMessage = error;
+    } else if (error instanceof Error && typeof error.message === 'string') {
+      rawMessage = error.message;
+    } else if (typeof error === 'object' && error !== null && 'message' in error) {
       const messageValue = (error as { message: unknown }).message;
       if (typeof messageValue === 'string') {
-        return messageValue;
+        rawMessage = messageValue;
       }
     }
-    return defaultMessage;
+  
+    if (rawMessage.includes('503 Service Unavailable') || rawMessage.toLowerCase().includes('model is overloaded')) {
+      return 'Máy chủ AI hiện đang quá tải. Vui lòng thử lại sau ít phút.';
+    }
+    
+    return rawMessage || defaultMessage;
   }
 
 
@@ -627,9 +662,18 @@ export default function MagicalGifMakerPage() {
                 <TabsContent value="frames" className="animate-fadeIn">
                   <div id="frames-container" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 p-1 bg-muted/30 rounded-lg border border-primary/10">
                     {currentGeneratedFrames.map((frame, index) => (
-                      <div key={`current-${index}`} className="aspect-square border border-primary/20 rounded-md overflow-hidden shadow-sm relative animate-fadeIn" style={{ animationDelay: `${index * 50}ms`}}>
+                      <div key={`current-${index}`} className="aspect-square border border-primary/20 rounded-md overflow-hidden shadow-sm relative animate-fadeIn group">
                         <Image src={frame} alt={`Khung ${index + 1}`} layout="fill" objectFit="contain" className="bg-white" data-ai-hint="doodle animation" />
                         <span className="absolute top-1 right-1 bg-primary/80 text-primary-foreground text-xs px-1.5 py-0.5 rounded-full shadow-md">{index + 1}</span>
+                        <Button
+                          onClick={() => handleDownloadSingleFrame(frame, index, storySegments.length > 0 ? storySegments[storySegments.length - 1].id : undefined)}
+                          variant="outline"
+                          size="icon"
+                          className="absolute bottom-1 right-1 h-7 w-7 bg-background/70 hover:bg-primary/70 hover:text-primary-foreground border-primary/40 text-primary shadow backdrop-blur-sm rounded-full transition-all duration-200 opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100"
+                          aria-label={`Tải khung ${index + 1}`}
+                        >
+                          <DownloadCloud className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
                     {isProcessing && currentGeneratedFrames.length === 0 && (
@@ -647,7 +691,7 @@ export default function MagicalGifMakerPage() {
                       <div className="relative group shadow-lg rounded-lg overflow-hidden border-2 border-primary/30">
                         <Image src={currentGeneratedGifUrl} alt="GIF Đã Tạo" width={400} height={400} objectFit="contain" className="bg-white" unoptimized data-ai-hint="generated gif animation"/>
                         <Button
-                          onClick={() => handleDownloadGif(currentGeneratedGifUrl, storySegments.length -1 )}
+                          onClick={() => handleDownloadGif(currentGeneratedGifUrl, storySegments.length > 0 ? storySegments.length -1 : undefined )}
                           variant="outline"
                           size="icon"
                           className="absolute bottom-3 right-3 h-10 w-10 bg-background/80 hover:bg-primary/80 hover:text-primary-foreground border-primary/50 text-primary shadow-md backdrop-blur-sm rounded-full transition-all duration-300 opacity-70 group-hover:opacity-100 scale-90 group-hover:scale-100"
@@ -819,3 +863,4 @@ export default function MagicalGifMakerPage() {
     </div>
   );
 }
+
