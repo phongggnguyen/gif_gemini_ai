@@ -8,14 +8,14 @@ import { generateFrames, type GenerateFramesInput as GenerateFramesInputType, ty
 export type RefinePromptInput = RefinePromptInputType & {
   isContinuation?: boolean;
   previousSegmentRefinedPrompt?: string;
-  newImageProvidedForCurrentSegment?: boolean; // New flag
+  newImageProvidedForCurrentSegment?: boolean; 
 };
 
 export type GenerateFramesInput = GenerateFramesInputType & {
   initialFrameReferenceDataUri?: string; 
   isFirstSegment?: boolean;
-  newImageProvidedForCurrentSegment?: boolean; // New flag
-  lastFrameOfPreviousSegmentDataUri?: string; // New flag
+  newImageProvidedForCurrentSegment?: boolean; 
+  lastFrameOfPreviousSegmentDataUri?: string; 
 };
 
 
@@ -40,6 +40,13 @@ function getErrorMessage(error: unknown, defaultMessage: string): string {
   return rawMessage || defaultMessage;
 }
 
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.stack;
+  }
+  return undefined;
+}
+
 export async function refineUserPrompt(input: RefinePromptInput): Promise<RefinePromptOutput> {
   try {
     const validatedInput = {
@@ -50,16 +57,19 @@ export async function refineUserPrompt(input: RefinePromptInput): Promise<Refine
     const result = await refinePrompt(validatedInput);
     return result;
   } catch (error: unknown) {
-    let errorDetails = 'Could not stringify error details.';
-    try {
-      errorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error || {}), 2);
-    } catch (stringifyError) {
-      errorDetails = `Failed to stringify error. Original error might have circular references. Message: ${getErrorMessage(error, '')}`;
-    }
-    console.error("[refineUserPrompt Action] Original error details:", errorDetails);
-    
     const message = getErrorMessage(error, "Không thể tinh chỉnh lời nhắc. Vui lòng thử lại.");
-    console.error("[refineUserPrompt Action] Throwing error with message:", message);
+    const stack = getErrorStack(error);
+    
+    console.error(`[refineUserPrompt Action] Error: ${message}`);
+    if (stack) {
+      console.error(`[refineUserPrompt Action] Stack: ${stack}`);
+    }
+    if (typeof error === 'object' && error !== null) {
+        console.error("[refineUserPrompt Action] Raw error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    } else {
+        console.error("[refineUserPrompt Action] Raw error:", error);
+    }
+    
     throw new Error(message);
   }
 }
@@ -76,17 +86,19 @@ export async function generateImageFrames(input: GenerateFramesInput): Promise<G
     const result = await generateFrames(validatedInput);
     return result;
   } catch (error: unknown) {
-    let errorDetails = 'Could not stringify error details.';
-    try {
-      errorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error || {}), 2);
-    } catch (stringifyError) {
-      errorDetails = `Failed to stringify error. Original error might have circular references. Message: ${getErrorMessage(error, '')}`;
-    }
-    console.error("[generateImageFrames Action] Original error details:", errorDetails);
-
     const message = getErrorMessage(error, "Không thể tạo khung hình. Hãy đảm bảo lời nhắc của bạn mang tính mô tả và thử lại.");
-    console.error("[generateImageFrames Action] Throwing error with message:", message);
+    const stack = getErrorStack(error);
+
+    console.error(`[generateImageFrames Action] Error: ${message}`);
+    if (stack) {
+      console.error(`[generateImageFrames Action] Stack: ${stack}`);
+    }
+    if (typeof error === 'object' && error !== null) {
+        console.error("[generateImageFrames Action] Raw error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    } else {
+        console.error("[generateImageFrames Action] Raw error:", error);
+    }
+    
     throw new Error(message);
   }
 }
-
